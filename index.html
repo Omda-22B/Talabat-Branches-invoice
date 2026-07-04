@@ -1,16 +1,446 @@
 <!DOCTYPE html>
-<html lang="ar">
+<html>
 <head>
+  <base target="_top">
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <title>talabat. Invoice Lookup</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    html,body{margin:0;padding:0;height:100%;background:#6b0f1a;}
-    iframe{border:0;width:100%;height:100vh;display:block;}
+    :root{
+      --orange:#FF5A00; --orange-dark:#E14F00; --orange-soft:#FFF1E9;
+      --card:#ffffff; --ok:#2E9E5B; --err:#dc2626;
+      --muted:#7a7a7a; --line:#ececec; --text:#313131;
+      --spring:cubic-bezier(.22,1,.36,1);
+      --snap:cubic-bezier(.34,1.56,.64,1);
+    }
+    *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+    html,body{margin:0; padding:0;}
+    body{
+      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+      background:#6b0f1a;
+      min-height:100vh; color:var(--text);
+      display:flex; flex-direction:column; align-items:center;
+      padding:30px 16px 48px;
+    }
+    @media (prefers-reduced-motion: reduce){*{animation:none!important; transition:none!important;}}
+
+    /* ===== header + typewriter brand ===== */
+    .header{text-align:center; margin:6px 0 22px;}
+    .brand{font-size:26px; font-weight:800; letter-spacing:-.5px; margin:0; color:#fff;}
+    .header p{font-size:13px; color:rgba(255,255,255,.8); margin:6px 0 0;}
+
+    /* .tw reserves the full word width (via hidden .ghost) so "Invoice Lookup"
+       never shifts while the text types/deletes. .live is overlaid on top. */
+    .brand .tw{position:relative; display:inline-block; vertical-align:baseline;}
+    .brand .tw .ghost{visibility:hidden;}
+    .brand .tw .live{position:absolute; left:0; top:0; white-space:nowrap;}
+    .brand .tw .type{
+      color:var(--orange);
+      text-shadow:0 0 10px rgba(255,90,0,.22);      /* subtle glow at rest */
+      transition:text-shadow .3s ease;
+    }
+    .brand .tw.typing .type{text-shadow:0 0 18px rgba(255,90,0,.45);} /* brighter while typing */
+
+    /* ===== card ===== */
+    .card{
+      width:100%; max-width:430px; background:var(--card);
+      border-radius:20px; padding:22px 20px;
+      box-shadow:0 12px 35px rgba(0,0,0,.25);
+      border:1px solid var(--line);
+    }
+    label{font-size:13px; font-weight:700; color:var(--muted); display:block; margin-bottom:8px;}
+    .search-row{display:flex; gap:10px; align-items:stretch;}
+    input{
+      flex:1; font-size:18px; padding:15px 16px; border:2px solid var(--line);
+      border-radius:12px; outline:none; transition:border-color .15s, box-shadow .15s; width:100%;
+      text-transform:uppercase; min-width:0; color:var(--text);
+    }
+    input:focus{border-color:var(--orange); box-shadow:0 0 0 4px rgba(255,90,0,.12);}
+    .hint{font-size:12px; color:var(--muted); margin:10px 2px 0;}
+
+    /* ===== PREMIUM GLASS BUTTON SYSTEM =====
+       One frosted skeleton (.pbtn); modifiers only re-tint it.
+       primary = orange glass (Search, Download) · ghost = neutral glass (View) */
+    .pbtn{
+      position:relative; isolation:isolate;
+      display:inline-flex; align-items:center; justify-content:center; gap:9px;
+      min-height:52px; border:1px solid rgba(255,255,255,.6); border-radius:12px;
+      font-weight:800; font-size:16px; letter-spacing:.2px; cursor:pointer; overflow:hidden;
+      background:rgba(255,255,255,.55);
+      -webkit-backdrop-filter:blur(12px) saturate(140%); backdrop-filter:blur(12px) saturate(140%);
+      box-shadow:0 8px 26px -12px rgba(31,35,48,.28), inset 0 1px 0 rgba(255,255,255,.9);
+      color:var(--text);
+      transition:transform .35s var(--spring), box-shadow .35s var(--spring), background .4s ease;
+      will-change:transform;
+    }
+    .pbtn:focus-visible{outline:3px solid #fff; outline-offset:3px;}
+    .pbtn:active{transform:translateY(-1px) scale(.985);}
+    .pbtn .ico,.pbtn .txt{position:relative; z-index:3; display:inline-flex; transition:transform .4s var(--snap), opacity .22s;}
+    .pbtn .txt{transition:opacity .22s;}
+
+    /* diagonal shine sweep on hover — the glass signature */
+    .pbtn .sheen{
+      position:absolute; top:0; left:-60%; width:45%; height:100%; z-index:4; pointer-events:none;
+      background:linear-gradient(115deg,transparent,rgba(255,255,255,.8),transparent);
+      transform:skewX(-18deg); transition:left .7s var(--spring);
+    }
+    .pbtn:hover .sheen{left:135%;}
+    .pbtn:hover{transform:translateY(-3px); box-shadow:0 16px 40px -16px rgba(31,35,48,.42), inset 0 1px 0 rgba(255,255,255,.9);}
+
+    .pbtn.primary{
+      color:#fff; border-color:rgba(255,255,255,.4);
+      background:linear-gradient(135deg, rgba(255,122,46,.95), rgba(255,90,0,.95));
+      box-shadow:0 10px 28px -12px rgba(255,90,0,.7), inset 0 1px 0 rgba(255,255,255,.5);
+    }
+    .pbtn.primary:hover{box-shadow:0 16px 42px -16px rgba(255,90,0,.85), inset 0 1px 0 rgba(255,255,255,.5);}
+    .pbtn.ghost{color:var(--orange); border-color:var(--orange);}
+    .pbtn.ghost:hover .ico{transform:scale(1.15);}
+
+    /* progress fill (Download) + centered success/error/spinner glyphs */
+    .pbtn .fill{position:absolute; inset:0; z-index:0; transform-origin:left center; transform:scaleX(0);
+      background:rgba(255,255,255,.3); transition:transform .12s linear; pointer-events:none;}
+    .pbtn .spinner{display:none; z-index:3;}
+    .pbtn .spinner svg{animation:spin .8s linear infinite;}
+    @keyframes spin{to{transform:rotate(360deg);}}
+    .pbtn .done-ico{position:absolute; top:50%; left:50%; z-index:5; opacity:0;
+      transform:translate(-50%,-50%) scale(.4); transition:opacity .2s, transform .45s var(--snap); pointer-events:none;}
+    .pbtn .done-ico path{stroke-dasharray:30; stroke-dashoffset:30; transition:stroke-dashoffset .5s .1s var(--spring);}
+
+    /* --- state visibility --- */
+    .pbtn.is-busy .ico{opacity:0; transform:scale(.6);}
+    .pbtn.is-busy .spinner{display:inline-flex;}
+    .search-btn.is-busy .txt, .view.is-busy .txt{opacity:1;}      /* keep the word next to the spinner */
+    .pbtn.is-ok .txt,.pbtn.is-err .txt,.pbtn.is-done .txt{opacity:0;}
+    .pbtn.is-ok .ico,.pbtn.is-err .ico,.pbtn.is-done .ico,
+    .pbtn.is-ok .spinner,.pbtn.is-err .spinner,.pbtn.is-done .spinner{opacity:0;}
+
+    /* success: green + drawn check + pulse ring */
+    .pbtn.is-ok,.pbtn.is-done{background:linear-gradient(135deg,#34c76a,var(--ok)); border-color:rgba(255,255,255,.4); color:#fff;}
+    .pbtn.is-ok .done-ico.ok,.pbtn.is-done .done-ico.ok{opacity:1; transform:translate(-50%,-50%) scale(1);}
+    .pbtn.is-ok .done-ico.ok path,.pbtn.is-done .done-ico.ok path{stroke-dashoffset:0;}
+    .pbtn.is-ok,.pbtn.is-done{animation:pulse-ring .7s var(--spring);}
+    @keyframes pulse-ring{
+      0%{box-shadow:0 0 0 0 rgba(46,158,91,.55), 0 10px 28px -12px rgba(46,158,91,.6);}
+      100%{box-shadow:0 0 0 20px rgba(46,158,91,0), 0 10px 28px -12px rgba(46,158,91,.6);}
+    }
+    /* error: red + X + shake */
+    .pbtn.is-err{background:linear-gradient(135deg,#f04a4a,var(--err)); border-color:rgba(255,255,255,.4); color:#fff; animation:err-shake .5s ease;}
+    .pbtn.is-err .done-ico.err{opacity:1; transform:translate(-50%,-50%) scale(1);}
+    .pbtn.shake{animation:err-shake .5s ease;}
+    @keyframes err-shake{10%,90%{transform:translateX(-2px);}20%,80%{transform:translateX(4px);}30%,50%,70%{transform:translateX(-7px);}40%,60%{transform:translateX(7px);}}
+
+    .search-btn{min-width:150px; padding:0 20px;}
+    /* indeterminate shimmer under the Search button while searching */
+    .search-btn .bar{position:absolute; left:0; bottom:0; height:3px; width:100%; z-index:6; opacity:0; overflow:hidden;}
+    .search-btn .bar::after{content:""; position:absolute; inset:0; width:40%; background:linear-gradient(90deg,transparent,#fff,transparent); transform:translateX(-100%);}
+    .search-btn.is-busy .bar{opacity:.9;}
+    .search-btn.is-busy .bar::after{animation:shimmer 1s linear infinite;}
+    @keyframes shimmer{to{transform:translateX(350%);}}
+
+    /* ===== result / invoice / states (unchanged look) ===== */
+    .result{margin-top:18px;}
+    .spinner-lg{width:34px; height:34px; border:4px solid var(--line); border-top-color:var(--orange);
+      border-radius:50%; animation:spin .8s linear infinite; margin:24px auto;}
+    .invoice{border:1px solid var(--line); border-radius:14px; overflow:hidden; animation:pop .25s ease;}
+    @keyframes pop{from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:none;}}
+    .invoice .top{background:var(--orange-soft); padding:14px 16px; display:flex; align-items:center; gap:10px; border-bottom:1px solid #ffe2d1;}
+    .badge{width:34px; height:34px; border-radius:50%; background:var(--ok); color:#fff; display:flex; align-items:center; justify-content:center; font-size:18px;}
+    .invoice .top .t1{font-weight:800; font-size:16px;}
+    .invoice .top .t2{font-size:12px; color:var(--ok); font-weight:600;}
+    .meta{padding:14px 16px;}
+    .meta .row{display:flex; justify-content:space-between; padding:7px 0; font-size:14px; border-bottom:1px dashed var(--line);}
+    .meta .row:last-child{border-bottom:none;}
+    .meta .k{color:var(--muted);} .meta .v{font-weight:700;}
+    .actions{display:flex; gap:10px; padding:4px 16px 16px;}
+    .actions>*{flex:1;}
+    .notfound{border:1px solid #fecaca; background:#fef2f2; border-radius:14px; padding:22px 16px; text-align:center; animation:pop .25s ease;}
+    .notfound .x{width:44px; height:44px; border-radius:50%; background:var(--err); color:#fff; font-size:24px; display:flex; align-items:center; justify-content:center; margin:0 auto 10px;}
+    .notfound .m1{font-weight:800; font-size:16px; color:var(--err); margin-bottom:4px;}
+    .notfound .m2{font-size:13px; color:var(--muted);}
+    .footer{color:rgba(255,255,255,.7); font-size:11px; margin-top:22px; text-align:center;}
   </style>
 </head>
 <body>
-  <iframe src="https://script.google.com/macros/s/AKfycbzeiGLPmtcBKVQnty2i9PChFCAOXjMcPo9RrxGJPHRSCkZ9YerglT7WoyrEEjnaKe2g6g/exec"
-          allow="clipboard-write"></iframe>
+  <div class="header">
+    <h1 class="brand">
+      <span class="tw" aria-label="talabat."><span class="ghost" aria-hidden="true">talabat.</span><span class="live" aria-hidden="true"><span class="type"></span></span></span>
+      <span id="appTitle">Invoice Lookup</span>
+    </h1>
+    <p>Enter your ST number to retrieve the transfer invoice</p>
+  </div>
+
+  <div class="card">
+    <label for="st">ST Number</label>
+    <div class="search-row">
+      <input id="st" type="text" inputmode="text" autocomplete="off"
+             placeholder="e.g. ST074634" onkeydown="if(event.key==='Enter')doSearch()">
+
+      <!-- SEARCH (glass, primary) -->
+      <button class="pbtn primary search-btn" id="searchBtn" data-magnetic onclick="doSearch()">
+        <span class="sheen"></span>
+        <span class="ico ico-search" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+        <span class="spinner" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,.35)" stroke-width="2.5"/><path d="M21 12a9 9 0 00-9-9" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/></svg></span>
+        <span class="txt">Search</span>
+        <span class="done-ico ok" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4 4L19 7" stroke="#fff" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="done-ico err" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M7 7l10 10M17 7L7 17" stroke="#fff" stroke-width="2.8" stroke-linecap="round"/></svg></span>
+        <span class="bar" aria-hidden="true"></span>
+      </button>
+    </div>
+    <div class="hint">You can type the number with or without "ST".</div>
+    <div class="result" id="result"></div>
+  </div>
+
+<div class="footer">Developed by <a href="https://www.linkedin.com/in/mahmoudemad4455/" target="_blank" style="color:inherit;text-decoration:none;">Mahmoud Emad</a></div>
+
+<script>
+  function el(id){ return document.getElementById(id); }
+  var wait = function(ms){ return new Promise(function(r){ setTimeout(r,ms); }); };
+  var rand = function(a,b){ return a+Math.random()*(b-a); };
+
+  /* =========================================================================
+     TYPEWRITER — types/deletes "talabat." forever, no caret, subtle glow.
+     ========================================================================= */
+  (function typewriter(){
+    var WORD='talabat.';
+    var tw=document.querySelector('.tw');
+    var type=tw.querySelector('.type');
+    if(matchMedia('(prefers-reduced-motion: reduce)').matches){ type.textContent=WORD; return; }
+    (async function loop(){
+      while(true){
+        tw.classList.add('typing');
+        for(var n=1;n<=WORD.length;n++){ type.textContent=WORD.slice(0,n); await wait(rand(85,150)); }
+        tw.classList.remove('typing');
+        await wait(1000);                                   // hold on full word
+        tw.classList.add('typing');
+        for(var m=WORD.length-1;m>=0;m--){ type.textContent=WORD.slice(0,m); await wait(rand(50,90)); }
+        tw.classList.remove('typing');
+        await wait(650);                                    // rest before retyping
+      }
+    })();
+  })();
+
+  /* =========================================================================
+     MAGNETIC HOVER — button eases toward the cursor (fine pointer only).
+     Frozen (data-locked) while a button is mid-state so it never conflicts.
+     ========================================================================= */
+  var canHover = matchMedia('(hover:hover) and (pointer:fine)').matches;
+  function initMagnetic(elm){
+    if(!canHover || !elm || elm.__mag) return; elm.__mag=true;
+    var pull=12;
+    elm.addEventListener('pointermove', function(e){
+      if(elm.dataset.locked) return;
+      var r=elm.getBoundingClientRect();
+      var mx=(e.clientX-(r.left+r.width/2))/(r.width/2);
+      var my=(e.clientY-(r.top+r.height/2))/(r.height/2);
+      elm.style.transform='translate('+(mx*pull)+'px,'+(my*pull-3)+'px)';
+    });
+    elm.addEventListener('pointerleave', function(){ if(!elm.dataset.locked) elm.style.transform=''; });
+  }
+  initMagnetic(el('searchBtn'));
+
+  /* =========================================================================
+     SEARCH — state machine tied to the REAL backend result.
+     Search → Searching… → Found / Not found / Error → reset.
+     ========================================================================= */
+  var searching=false;
+  var sBtn=function(){ return el('searchBtn'); };
+  function sTxt(t){ sBtn().querySelector('.txt').textContent=t; }
+
+  function doSearch(){
+    if(searching) return;
+    var q=el('st').value.trim();
+    if(!q){                                     // empty: nudge + shake, no request
+      el('st').focus();
+      var b=sBtn(); b.classList.add('shake');
+      setTimeout(function(){ b.classList.remove('shake'); },500);
+      return;
+    }
+    searching=true;
+    var b=sBtn();
+    b.classList.remove('is-ok','is-err'); b.classList.add('is-busy');
+    b.dataset.locked='1'; b.style.transform='';
+    sTxt('Searching\u2026');
+    el('result').innerHTML='<div class="spinner-lg"></div>';
+
+    google.script.run
+      .withSuccessHandler(function(res){ onSearchDone(res); render(res); })
+      .withFailureHandler(function(e){ var res={ ok:false, error:(e&&e.message)||'Error' }; onSearchDone(res); render(res); })
+      .searchInvoice(q);
+  }
+
+  function onSearchDone(res){
+    var b=sBtn(); b.classList.remove('is-busy');
+    if(res.ok && res.found){ b.classList.add('is-ok'); }
+    else { b.classList.add('is-err'); }
+    setTimeout(function(){
+      b.classList.remove('is-ok','is-err'); sTxt('Search');
+      delete b.dataset.locked; searching=false;
+    }, 1500);
+  }
+
+  /* =========================================================================
+     RENDER — same markup/logic as before, but the two action buttons are now
+     glass. Real handlers (runView / runDownload) preserve your backend calls.
+     ========================================================================= */
+  function render(res){
+    if(!res.ok){ el('result').innerHTML = errorBox('Error', res.error || 'Unknown error'); return; }
+    if(!res.found){
+      el('result').innerHTML =
+        '<div class="notfound"><div class="x">!</div>' +
+        '<div class="m1">Invoice Not Found</div>' +
+        '<div class="m2">' + escapeHtml(res.message) + '</div></div>';
+      return;
+    }
+    var d = res.data;
+    el('result').innerHTML =
+      '<div class="invoice">' +
+        '<div class="top"><div class="badge">&#10003;</div>' +
+          '<div><div class="t1">' + escapeHtml(d.name) + '</div>' +
+          '<div class="t2">Invoice found</div></div></div>' +
+        '<div class="meta">' +
+          row('ST Number', res.query) +
+          row('File size', d.sizeText) +
+          row('Last updated', d.updated) +
+        '</div>' +
+        '<div class="actions">' +
+          viewBtnHTML() +
+          dlBtnHTML() +
+        '</div>' +
+      '</div>';
+
+    var v=el('viewBtn'), dlb=el('dlBtn');
+    initMagnetic(v);
+    v.onclick   = function(){ runView(d); };
+    dlb.onclick = function(){ runDownload(d); };
+  }
+
+  /* ---- glass button markup (injected) ---- */
+  function viewBtnHTML(){
+    return '<button class="pbtn ghost view" id="viewBtn" data-magnetic>' +
+      '<span class="sheen"></span>' +
+      '<span class="ico" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/></svg></span>' +
+      '<span class="spinner" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="rgba(255,90,0,.25)" stroke-width="2.5"/><path d="M21 12a9 9 0 00-9-9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></span>' +
+      '<span class="txt">View PDF</span>' +
+      '<span class="done-ico err" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M7 7l10 10M17 7L7 17" stroke="#fff" stroke-width="2.8" stroke-linecap="round"/></svg></span>' +
+      '</button>';
+  }
+  function dlBtnHTML(){
+    return '<button class="pbtn primary download" id="dlBtn">' +
+      '<span class="fill" aria-hidden="true"></span>' +
+      '<span class="sheen"></span>' +
+      '<span class="ico" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 3v11m0 0l-4-4m4 4l4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>' +
+      '<span class="txt">Download</span>' +
+      '<span class="done-ico ok" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4 4L19 7" stroke="#fff" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>' +
+      '<span class="done-ico err" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M7 7l10 10M17 7L7 17" stroke="#fff" stroke-width="2.8" stroke-linecap="round"/></svg></span>' +
+      '</button>';
+  }
+
+  /* =========================================================================
+     DELIVERY — identical semantics to your original openInvoice():
+       proxy mode  -> google.script.run.getInvoiceBytes -> Blob
+       direct mode -> open d.viewUrl / d.downloadUrl
+     Returned as a promise so the animation can wait for the real bytes.
+     ========================================================================= */
+  function getDelivery(d){
+    return new Promise(function(resolve, reject){
+      if(d.deliveryMode === 'proxy'){
+        google.script.run
+          .withSuccessHandler(function(r){ if(!r.ok){ reject(new Error(r.error||'load failed')); } else { resolve({type:'blob', r:r}); } })
+          .withFailureHandler(function(e){ reject(e); })
+          .getInvoiceBytes(d.id);
+      } else {
+        resolve({type:'url'});
+      }
+    });
+  }
+  function deliver(d, download, delivery){
+    if(delivery.type === 'url'){
+      window.open(download ? d.downloadUrl : d.viewUrl, '_blank');
+      return;
+    }
+    var r = delivery.r;
+    var bytes = atob(r.base64);
+    var arr = new Uint8Array(bytes.length);
+    for(var i=0;i<bytes.length;i++){ arr[i] = bytes.charCodeAt(i); }
+    var url = URL.createObjectURL(new Blob([arr], {type:'application/pdf'}));
+    if(download){
+      var a = document.createElement('a'); a.href = url; a.download = r.name; a.click();
+    } else {
+      window.open(url, '_blank');
+    }
+  }
+
+  /* =========================================================================
+     VIEW — glass + magnetic + shine. Direct mode opens synchronously (keeps
+     the click gesture, no popup block); proxy mode shows a spinner then opens.
+     ========================================================================= */
+  async function runView(d){
+    var b=el('viewBtn');
+    if(d.deliveryMode !== 'proxy'){ deliver(d, false, {type:'url'}); return; }  // sync open
+    if(b.classList.contains('is-busy')) return;
+    b.dataset.locked='1'; b.style.transform='';
+    b.classList.add('is-busy'); b.querySelector('.txt').textContent='Opening\u2026';
+    try{
+      var delivery = await getDelivery(d);
+      deliver(d, false, delivery);
+      b.classList.remove('is-busy'); b.querySelector('.txt').textContent='View PDF';
+      delete b.dataset.locked;
+    }catch(e){
+      b.classList.remove('is-busy'); b.classList.add('is-err');
+      setTimeout(function(){ b.classList.remove('is-err'); b.querySelector('.txt').textContent='View PDF'; delete b.dataset.locked; }, 1500);
+    }
+  }
+
+  /* =========================================================================
+     DOWNLOAD — progress state machine tied to the real fetch:
+       Preparing → ramps to ~90% while bytes load → 100% → drawn-check success.
+       Direct mode fires the download on click (gesture-safe) then animates.
+     ========================================================================= */
+  var dlBusy=false;
+  async function runDownload(d){
+    if(dlBusy) return; dlBusy=true;
+    var b=el('dlBtn');
+    var txt=b.querySelector('.txt'), fill=b.querySelector('.fill');
+    var setP=function(p){ fill.style.transform='scaleX('+(p/100)+')'; };
+
+    b.classList.add('is-busy'); txt.textContent='Preparing\u2026'; setP(0);
+
+    // start the real work immediately
+    var deliveryPromise, preDelivered=false;
+    if(d.deliveryMode === 'proxy'){
+      deliveryPromise = getDelivery(d);                 // async fetch
+    }else{
+      deliver(d, true, {type:'url'});                   // gesture-safe direct download
+      preDelivered=true; deliveryPromise = Promise.resolve({type:'url'});
+    }
+
+    await wait(300);
+    var p=0;
+    while(p<90){ p+=Math.max(1,Math.round(rand(2,7))); setP(Math.min(p,90)); txt.textContent=Math.min(p,90)+'%'; await wait(50); }
+
+    var delivery;
+    try{ delivery = await deliveryPromise; }
+    catch(e){                                           // load failed -> error state
+      b.classList.remove('is-busy'); b.classList.add('is-err');
+      setTimeout(function(){ b.classList.remove('is-err'); txt.textContent='Download'; setP(0); dlBusy=false; }, 1600);
+      return;
+    }
+
+    for(; p<=100; p+=4){ setP(Math.min(p,100)); txt.textContent=Math.min(p,100)+'%'; await wait(25); }
+    setP(100); txt.textContent='100%'; await wait(150);
+
+    if(!preDelivered){ deliver(d, true, delivery); }    // proxy: deliver the bytes now
+
+    // success: drawn check + pulse ring
+    b.classList.remove('is-busy'); b.classList.add('is-done');
+    await wait(1600);
+
+    b.classList.remove('is-done'); txt.textContent='Download'; setP(0); dlBusy=false;
+  }
+
+  /* ---- helpers (unchanged) ---- */
+  function row(k,v){ return '<div class="row"><span class="k">'+k+'</span><span class="v">'+escapeHtml(v)+'</span></div>'; }
+  function errorBox(t,m){ return '<div class="notfound"><div class="x">!</div><div class="m1">'+t+'</div><div class="m2">'+escapeHtml(m)+'</div></div>'; }
+  function escapeHtml(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+</script>
 </body>
 </html>
