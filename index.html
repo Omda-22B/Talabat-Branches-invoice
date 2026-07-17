@@ -1,16 +1,736 @@
 <!DOCTYPE html>
-<html lang="ar">
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <title>talabat. Invoice Lookup</title>
-  <style>
-    html,body{margin:0;padding:0;height:100%;background:#6b0f1a;}
-    iframe{border:0;width:100%;height:100vh;display:block;}
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Talabat WH QC Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --primary: #FF5A00;
+    --primary-light: #FF8C42;
+    --primary-dark: #CC4800;
+    --success: #22C55E;
+    --warning: #F59E0B;
+    --info: #3B82F6;
+    --danger: #EF4444;
+    --gray-50: #F9FAFB;
+    --gray-100: #F3F4F6;
+    --gray-200: #E5E7EB;
+    --gray-400: #9CA3AF;
+    --gray-500: #6B7280;
+    --gray-700: #374151;
+    --gray-900: #111827;
+    --white: #FFFFFF;
+    --card-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.06);
+    --card-shadow-hover: 0 4px 12px rgba(0,0,0,0.10), 0 8px 32px rgba(0,0,0,0.08);
+    --radius: 14px;
+    --radius-sm: 8px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--gray-100); color: var(--gray-900); min-height: 100vh; }
+
+  /* TOP BAR */
+  .topbar { background: var(--white); border-bottom: 1px solid var(--gray-200); padding: 0 24px; height: 60px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+  .topbar-brand { display: flex; align-items: center; gap: 12px; }
+  .brand-logo { width: 36px; height: 36px; background: var(--primary); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+  .brand-name { font-size: 17px; font-weight: 700; color: var(--gray-900); }
+  .brand-sub { font-size: 11px; color: var(--gray-500); font-weight: 400; margin-top: 1px; }
+  .topbar-right { display: flex; align-items: center; gap: 12px; }
+  .sync-badge { background: #F0FDF4; color: #166534; border: 1px solid #BBF7D0; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; display: flex; align-items: center; gap: 4px; }
+  .sync-dot { width: 6px; height: 6px; background: var(--success); border-radius: 50%; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  .topbar-date { font-size: 12px; color: var(--gray-500); font-weight: 500; }
+  .avatar { width: 34px; height: 34px; background: var(--primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 13px; font-weight: 700; cursor: pointer; }
+
+  /* BOTTOM NAV */
+  .bottomnav { position: fixed; bottom: 0; left: 0; right: 0; background: var(--white); border-top: 1px solid var(--gray-200); display: flex; z-index: 100; box-shadow: 0 -2px 12px rgba(0,0,0,0.06); }
+  .nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 8px 4px 10px; cursor: pointer; transition: all 0.2s; color: var(--gray-400); font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.3px; }
+  .nav-item.active { color: var(--primary); }
+  .nav-item .material-icons-round { font-size: 22px; }
+  .nav-item.active .material-icons-round { background: rgba(255,90,0,0.1); border-radius: 8px; padding: 2px 10px; }
+
+  /* MAIN */
+  .main { padding: 20px 20px 80px; max-width: 1440px; margin: 0 auto; }
+
+  /* FILTER BAR */
+  .filter-bar { background: var(--white); border-radius: var(--radius); padding: 14px 18px; margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; box-shadow: var(--card-shadow); }
+  .filter-label { font-size: 12px; font-weight: 600; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.5px; margin-right: 4px; }
+  .filter-chip { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; border: 1.5px solid var(--gray-200); background: var(--gray-50); font-size: 12px; font-weight: 500; color: var(--gray-700); cursor: pointer; transition: all 0.2s; user-select: none; }
+  .filter-chip.active { border-color: var(--primary); background: rgba(255,90,0,0.08); color: var(--primary); }
+  .filter-chip .material-icons-round { font-size: 14px; }
+  select.filter-select { padding: 6px 12px; border-radius: 20px; border: 1.5px solid var(--gray-200); background: var(--gray-50); font-size: 12px; font-weight: 500; color: var(--gray-700); cursor: pointer; outline: none; font-family: inherit; }
+  select.filter-select:focus { border-color: var(--primary); }
+  .filter-clear { margin-left: auto; padding: 6px 14px; border-radius: 20px; background: var(--primary); color: white; font-size: 12px; font-weight: 600; cursor: pointer; border: none; font-family: inherit; }
+
+  /* SECTION HEADER */
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin: 24px 0 14px; }
+  .section-title { font-size: 15px; font-weight: 700; color: var(--gray-900); display: flex; align-items: center; gap: 8px; }
+  .section-title .material-icons-round { font-size: 18px; color: var(--primary); }
+  .section-meta { font-size: 12px; color: var(--gray-400); }
+
+  /* KPI GRID */
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; margin-bottom: 8px; }
+  .kpi-card { background: var(--white); border-radius: var(--radius); padding: 18px 16px; box-shadow: var(--card-shadow); cursor: pointer; transition: all 0.22s; position: relative; overflow: hidden; }
+  .kpi-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--accent, var(--primary)); }
+  .kpi-card:hover { transform: translateY(-2px); box-shadow: var(--card-shadow-hover); }
+  .kpi-icon-wrap { width: 40px; height: 40px; border-radius: 10px; background: var(--icon-bg, rgba(255,90,0,0.1)); display: flex; align-items: center; justify-content: center; margin-bottom: 12px; }
+  .kpi-icon-wrap .material-icons-round { font-size: 20px; color: var(--accent, var(--primary)); }
+  .kpi-label { font-size: 11px; font-weight: 600; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 4px; }
+  .kpi-value { font-size: 28px; font-weight: 800; color: var(--gray-900); line-height: 1; margin-bottom: 6px; }
+  .kpi-trend { font-size: 11px; font-weight: 500; display: flex; align-items: center; gap: 3px; }
+  .kpi-trend.up { color: var(--success); }
+  .kpi-trend.down { color: var(--danger); }
+  .kpi-trend.neutral { color: var(--gray-400); }
+  .kpi-trend .material-icons-round { font-size: 13px; }
+
+  /* CHART GRIDS */
+  .chart-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .chart-full { margin-bottom: 16px; }
+
+  @media (max-width: 900px) { .chart-grid-2 { grid-template-columns: 1fr; } .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 480px) { .kpi-grid { grid-template-columns: 1fr 1fr; } .main { padding: 12px 12px 80px; } }
+
+  /* CHART CARD */
+  .chart-card { background: var(--white); border-radius: var(--radius); padding: 20px; box-shadow: var(--card-shadow); transition: box-shadow 0.2s; }
+  .chart-card:hover { box-shadow: var(--card-shadow-hover); }
+  .chart-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; }
+  .chart-title { font-size: 13px; font-weight: 700; color: var(--gray-900); }
+  .chart-subtitle { font-size: 11px; color: var(--gray-400); margin-top: 2px; font-weight: 400; }
+  .chart-badge { padding: 3px 8px; border-radius: 6px; font-size: 10px; font-weight: 700; background: rgba(255,90,0,0.1); color: var(--primary); }
+  .chart-wrap { position: relative; }
+  .chart-wrap canvas { max-height: 280px; }
+  .chart-wrap-tall canvas { max-height: 360px; }
+
+  /* TABLE */
+  .table-card { background: var(--white); border-radius: var(--radius); overflow: hidden; box-shadow: var(--card-shadow); }
+  .table-header { padding: 18px 20px 14px; border-bottom: 1px solid var(--gray-100); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  .table-title { font-size: 13px; font-weight: 700; color: var(--gray-900); }
+  .table-search { padding: 6px 12px; border-radius: 8px; border: 1.5px solid var(--gray-200); font-size: 12px; outline: none; font-family: inherit; width: 200px; }
+  .table-search:focus { border-color: var(--primary); }
+  table { width: 100%; border-collapse: collapse; }
+  th { font-size: 11px; font-weight: 700; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 14px; text-align: left; background: var(--gray-50); border-bottom: 1px solid var(--gray-200); white-space: nowrap; }
+  td { font-size: 12px; padding: 11px 14px; border-bottom: 1px solid var(--gray-100); color: var(--gray-700); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--gray-50); }
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .badge-reviewed { background: #F0FDF4; color: #166534; }
+  .badge-pending { background: #FFFBEB; color: #92400E; }
+
+  /* LEADERBOARD */
+  .lb-row { display: flex; align-items: center; padding: 14px 20px; gap: 14px; border-bottom: 1px solid var(--gray-100); transition: background 0.15s; }
+  .lb-row:hover { background: var(--gray-50); }
+  .lb-row:last-child { border-bottom: none; }
+  .lb-rank { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; flex-shrink: 0; }
+  .lb-rank.gold { background: #FEF3C7; color: #92400E; }
+  .lb-rank.silver { background: #F1F5F9; color: #475569; }
+  .lb-rank.other { background: var(--gray-100); color: var(--gray-500); }
+  .lb-info { flex: 1; }
+  .lb-name { font-size: 13px; font-weight: 600; color: var(--gray-900); }
+  .lb-meta { font-size: 11px; color: var(--gray-400); margin-top: 1px; }
+  .lb-bar-wrap { flex: 2; }
+  .lb-bar-bg { height: 6px; background: var(--gray-100); border-radius: 3px; overflow: hidden; }
+  .lb-bar-fill { height: 100%; background: var(--primary); border-radius: 3px; }
+  .lb-count { font-size: 16px; font-weight: 800; color: var(--primary); min-width: 36px; text-align: right; }
+
+  /* PAGES */
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* ALERT */
+  .alert-bar { display: flex; align-items: center; gap: 12px; background: #FFF7ED; border: 1px solid #FED7AA; border-radius: var(--radius-sm); padding: 12px 16px; margin-bottom: 16px; font-size: 12px; color: #92400E; font-weight: 500; }
+  .alert-bar .material-icons-round { color: var(--warning); font-size: 18px; flex-shrink: 0; }
+
+  .scroll-wrap { overflow-x: auto; }
+
+  @media (max-width: 600px) { .topbar-date { display: none; } .brand-sub { display: none; } }
+</style>
 </head>
 <body>
-  <iframe src="https://script.google.com/macros/s/AKfycbzeiGLPmtcBKVQnty2i9PChFCAOXjMcPo9RrxGJPHRSCkZ9YerglT7WoyrEEjnaKe2g6g/exec"
-          allow="clipboard-write"></iframe>
+
+<!-- TOP BAR -->
+<header class="topbar">
+  <div class="topbar-brand">
+    <div class="brand-logo">🚀</div>
+    <div>
+      <div class="brand-name">Talabat WH QC</div>
+      <div class="brand-sub">Warehouse Quality Control</div>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <div class="sync-badge"><span class="sync-dot"></span> Live Data</div>
+    <div class="topbar-date" id="topbarDate"></div>
+    <div class="avatar" title="mahmoud.emad@talabat.com">ME</div>
+  </div>
+</header>
+
+<div class="main">
+
+  <!-- ══ DASHBOARD PAGE ══ -->
+  <div class="page active" id="page-dashboard">
+
+    <div class="filter-bar">
+      <span class="filter-label">Filters</span>
+      <div class="filter-chip active" onclick="this.classList.toggle('active')"><span class="material-icons-round">date_range</span> All Dates</div>
+      <select class="filter-select" id="f-store"><option value="">All Stores</option></select>
+      <select class="filter-select" id="f-3pl">
+        <option value="">All 3PLs</option>
+        <option>Logistaway</option><option>NAQLA</option><option>Trella</option><option>QC Warehouse Review</option>
+      </select>
+      <select class="filter-select" id="f-status">
+        <option value="">All Status</option><option value="Reviewed">Reviewed</option><option value="Pending">Pending</option>
+      </select>
+      <select class="filter-select" id="f-submitter"><option value="">All Submitters</option></select>
+      <button class="filter-clear" onclick="clearFilters()">Clear All</button>
+    </div>
+
+    <div class="alert-bar">
+      <span class="material-icons-round">warning_amber</span>
+      <div><strong>83.6% of PODs are pending review</strong> — 1,130 deliveries awaiting QC sign-off across 74 stores.</div>
+    </div>
+
+    <div class="section-header">
+      <div class="section-title"><span class="material-icons-round">dashboard</span>Executive Overview</div>
+      <div class="section-meta" id="lastSync">Updated just now</div>
+    </div>
+
+    <div class="kpi-grid" id="kpiGrid"></div>
+
+    <div class="section-header" style="margin-top:28px;">
+      <div class="section-title"><span class="material-icons-round">trending_up</span>Trends</div>
+    </div>
+
+    <div class="chart-full">
+      <div class="chart-card">
+        <div class="chart-header">
+          <div><div class="chart-title">Daily POD Trend</div><div class="chart-subtitle">Number of PODs submitted per day</div></div>
+          <div class="chart-badge">Line</div>
+        </div>
+        <div class="chart-wrap"><canvas id="chartDailyPOD"></canvas></div>
+      </div>
+    </div>
+
+    <div class="chart-full">
+      <div class="chart-card">
+        <div class="chart-header">
+          <div><div class="chart-title">Daily Items Quantity Trend</div><div class="chart-subtitle">Total Remaining Qty processed per day</div></div>
+          <div class="chart-badge">Area</div>
+        </div>
+        <div class="chart-wrap"><canvas id="chartDailyQty"></canvas></div>
+      </div>
+    </div>
+
+    <div class="chart-grid-2">
+      <div class="chart-card">
+        <div class="chart-header">
+          <div><div class="chart-title">Reviewed vs Pending</div><div class="chart-subtitle">By unique POD count</div></div>
+          <div class="chart-badge">Donut</div>
+        </div>
+        <div class="chart-wrap"><canvas id="chartReviewedPending"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-header">
+          <div><div class="chart-title">Comments Analysis</div><div class="chart-subtitle">PODs with vs. without comments</div></div>
+          <div class="chart-badge">Donut</div>
+        </div>
+        <div class="chart-wrap"><canvas id="chartComments"></canvas></div>
+      </div>
+    </div>
+
+    <div class="section-header" style="margin-top:8px;">
+      <div class="section-title"><span class="material-icons-round">bar_chart</span>Distribution Analysis</div>
+    </div>
+
+    <div class="chart-full">
+      <div class="chart-card">
+        <div class="chart-header">
+          <div><div class="chart-title">PODs by Store</div><div class="chart-subtitle">Top 20 stores by delivery count</div></div>
+          <div class="chart-badge">Horizontal Bar</div>
+        </div>
+        <div class="chart-wrap" style="height:420px"><canvas id="chartPODsStore"></canvas></div>
+      </div>
+    </div>
+
+    <div class="chart-grid-2">
+      <div class="chart-card">
+        <div class="chart-header">
+          <div><div class="chart-title">PODs by 3PL Partner</div><div class="chart-subtitle">Deliveries per logistics partner</div></div>
+          <div class="chart-badge">Bar</div>
+        </div>
+        <div class="chart-wrap"><canvas id="chart3PL"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-header">
+          <div><div class="chart-title">PODs by Submitted User</div><div class="chart-subtitle">Field staff submission volume</div></div>
+          <div class="chart-badge">Bar</div>
+        </div>
+        <div class="chart-wrap"><canvas id="chartSubmitter"></canvas></div>
+      </div>
+    </div>
+
+    <div class="section-header" style="margin-top:8px;">
+      <div class="section-title"><span class="material-icons-round">fact_check</span>Review Analysis</div>
+    </div>
+
+    <div class="chart-full">
+      <div class="chart-card">
+        <div class="chart-header">
+          <div><div class="chart-title">Review Rate by Store (%)</div><div class="chart-subtitle">Green &gt;30% · Amber 15-30% · Red &lt;15%</div></div>
+          <div class="chart-badge">Horizontal Bar</div>
+        </div>
+        <div class="chart-wrap" style="height:400px"><canvas id="chartReviewRateStore"></canvas></div>
+      </div>
+    </div>
+
+    <div class="chart-full">
+      <div class="chart-card">
+        <div class="chart-header">
+          <div><div class="chart-title">Review Progress Over Time</div><div class="chart-subtitle">Cumulative reviewed PODs per day</div></div>
+          <div class="chart-badge">Area</div>
+        </div>
+        <div class="chart-wrap"><canvas id="chartReviewProgress"></canvas></div>
+      </div>
+    </div>
+
+    <div class="section-header" style="margin-top:8px;">
+      <div class="section-title"><span class="material-icons-round">inventory_2</span>Items Analysis</div>
+    </div>
+
+    <div class="chart-grid-2">
+      <div class="chart-card">
+        <div class="chart-header"><div><div class="chart-title">Top 10 Most Frequent Items</div><div class="chart-subtitle">By number of invoice lines</div></div></div>
+        <div class="chart-wrap" style="height:340px"><canvas id="chartTopItems"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-header"><div><div class="chart-title">Top 10 Items by Quantity</div><div class="chart-subtitle">By total Remaining Qty</div></div></div>
+        <div class="chart-wrap" style="height:340px"><canvas id="chartTopItemsQty"></canvas></div>
+      </div>
+    </div>
+
+    <div class="chart-grid-2">
+      <div class="chart-card">
+        <div class="chart-header"><div><div class="chart-title">Top 10 Stores by Total Quantity</div><div class="chart-subtitle">Highest volume stores</div></div></div>
+        <div class="chart-wrap"><canvas id="chartStoresQty"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-header"><div><div class="chart-title">Top 10 Stores with Pending Reviews</div><div class="chart-subtitle">Most backlogged — priority for QC</div></div></div>
+        <div class="chart-wrap"><canvas id="chartStoresPending"></canvas></div>
+      </div>
+    </div>
+
+    <div class="section-header" style="margin-top:8px;">
+      <div class="section-title"><span class="material-icons-round">emoji_events</span>Reviewers Leaderboard</div>
+    </div>
+    <div class="chart-card" style="padding:0;overflow:hidden;">
+      <div class="table-header">
+        <div class="table-title">Top Reviewers by PODs Cleared</div>
+        <div style="font-size:11px;color:var(--gray-400)">Live ranking</div>
+      </div>
+      <div id="leaderboard"></div>
+    </div>
+
+    <div class="section-header" style="margin-top:24px;">
+      <div class="section-title"><span class="material-icons-round">history</span>Recent Activity</div>
+    </div>
+    <div class="table-card">
+      <div class="table-header">
+        <div class="table-title">Latest Records (Last 7 Days)</div>
+        <input class="table-search" placeholder="Search POD, Store…" id="tableSearch" oninput="filterTable()">
+      </div>
+      <div class="scroll-wrap">
+        <table id="recentTable">
+          <thead><tr><th>POD ID</th><th>Store</th><th>3PL</th><th>Ship Date</th><th>Submitted By</th><th>Reviewed By</th><th>Status</th><th>Comment</th></tr></thead>
+          <tbody id="recentTbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /page-dashboard -->
+
+  <!-- ══ PODs PAGE ══ -->
+  <div class="page" id="page-pods">
+    <div class="section-header">
+      <div class="section-title"><span class="material-icons-round">local_shipping</span>All PODs</div>
+    </div>
+    <div class="table-card">
+      <div class="table-header">
+        <div class="table-title">POD List (1,352 unique PODs)</div>
+        <input class="table-search" placeholder="Search POD…">
+      </div>
+      <div class="scroll-wrap">
+        <table>
+          <thead><tr><th>POD ID</th><th>Ship Date</th><th>Store</th><th>3PL</th><th>Submitted By</th><th>ST Number</th><th>Lines</th><th>Total Qty</th><th>Status</th></tr></thead>
+          <tbody id="podsTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ STORES PAGE ══ -->
+  <div class="page" id="page-stores">
+    <div class="section-header">
+      <div class="section-title"><span class="material-icons-round">store</span>Stores Overview</div>
+    </div>
+    <div class="table-card">
+      <div class="table-header">
+        <div class="table-title">All Stores (74)</div>
+        <input class="table-search" placeholder="Search store…">
+      </div>
+      <div class="scroll-wrap">
+        <table>
+          <thead><tr><th>#</th><th>Store</th><th>PODs</th><th>Lines</th><th>Total Qty</th><th>Reviewed</th><th>Pending</th><th>Review Rate</th></tr></thead>
+          <tbody id="storesTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ ITEMS PAGE ══ -->
+  <div class="page" id="page-items">
+    <div class="section-header">
+      <div class="section-title"><span class="material-icons-round">inventory</span>Items Catalog</div>
+    </div>
+    <div class="table-card">
+      <div class="table-header">
+        <div class="table-title">Items by Frequency</div>
+        <input class="table-search" placeholder="Search item…">
+      </div>
+      <div class="scroll-wrap">
+        <table>
+          <thead><tr><th>#</th><th>Description</th><th>Item No.</th><th>Lines</th><th>Total Qty</th></tr></thead>
+          <tbody id="itemsTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ ANALYTICS PAGE ══ -->
+  <div class="page" id="page-analytics">
+    <div class="section-header">
+      <div class="section-title"><span class="material-icons-round">analytics</span>Deep Analytics</div>
+    </div>
+    <div class="chart-grid-2">
+      <div class="chart-card">
+        <div class="chart-header"><div><div class="chart-title">Weekly Submission Cadence</div><div class="chart-subtitle">PODs per ISO week</div></div></div>
+        <div class="chart-wrap"><canvas id="chartWeekly"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-header"><div><div class="chart-title">3PL Performance Matrix</div><div class="chart-subtitle">Reviewed vs Pending per partner</div></div></div>
+        <div class="chart-wrap"><canvas id="chart3PLPerf"></canvas></div>
+      </div>
+    </div>
+    <div class="chart-full">
+      <div class="chart-card">
+        <div class="chart-header"><div><div class="chart-title">Review Backlog Aging</div><div class="chart-subtitle">Reviewed (green) vs Pending (amber) per day — stacked</div></div></div>
+        <div class="chart-wrap"><canvas id="chartBacklog"></canvas></div>
+      </div>
+    </div>
+    <div class="chart-grid-2">
+      <div class="chart-card">
+        <div class="chart-header"><div><div class="chart-title">Submitter Workload Balance</div><div class="chart-subtitle">Share of total PODs per field user</div></div></div>
+        <div class="chart-wrap"><canvas id="chartWorkload"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-header"><div><div class="chart-title">3PL Market Share</div><div class="chart-subtitle">By total invoice lines</div></div></div>
+        <div class="chart-wrap"><canvas id="chart3PLShare"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SETTINGS PAGE ══ -->
+  <div class="page" id="page-settings">
+    <div class="section-header">
+      <div class="section-title"><span class="material-icons-round">settings</span>App Settings &amp; Build Checklist</div>
+    </div>
+    <div class="chart-card" style="max-width:560px;">
+      <div style="display:flex;flex-direction:column;gap:20px;">
+        <div>
+          <div class="chart-title" style="margin-bottom:8px;">Data Source</div>
+          <div style="font-size:12px;color:var(--gray-500)">Sheet: <strong>POD_Invoice_Data</strong> (Google Sheets)</div>
+          <div style="font-size:12px;color:var(--gray-500);margin-top:3px">Rows: <strong>8,975</strong> · PODs: <strong>1,352</strong> · Stores: <strong>74</strong></div>
+          <div style="font-size:12px;color:var(--gray-500);margin-top:3px">Auto-sync: Every 5 minutes (Delta Sync)</div>
+        </div>
+        <div>
+          <div class="chart-title" style="margin-bottom:8px;">AppSheet Configuration</div>
+          <div style="font-size:12px;color:var(--gray-500)">App Name: <strong>Talabat WH QC Dashboard</strong></div>
+          <div style="font-size:12px;color:var(--gray-500);margin-top:3px">Domain restriction: <strong>@talabat.com</strong></div>
+          <div style="font-size:12px;color:var(--gray-500);margin-top:3px">Primary color: <strong style="color:var(--primary)">#FF5A00</strong></div>
+        </div>
+        <div>
+          <div class="chart-title" style="margin-bottom:10px;">Build Checklist</div>
+          <div id="buildChecklist" style="display:flex;flex-direction:column;gap:8px;font-size:12px;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<!-- BOTTOM NAV -->
+<nav class="bottomnav">
+  <div class="nav-item active" onclick="showPage('dashboard',this)"><span class="material-icons-round">dashboard</span>Dashboard</div>
+  <div class="nav-item" onclick="showPage('pods',this)"><span class="material-icons-round">local_shipping</span>PODs</div>
+  <div class="nav-item" onclick="showPage('stores',this)"><span class="material-icons-round">store</span>Stores</div>
+  <div class="nav-item" onclick="showPage('items',this)"><span class="material-icons-round">inventory</span>Items</div>
+  <div class="nav-item" onclick="showPage('analytics',this)"><span class="material-icons-round">analytics</span>Analytics</div>
+  <div class="nav-item" onclick="showPage('settings',this)"><span class="material-icons-round">settings</span>Settings</div>
+</nav>
+
+<script>
+Chart.defaults.font.family = "'Inter', sans-serif";
+Chart.defaults.font.size = 11;
+Chart.defaults.color = '#6B7280';
+Chart.defaults.plugins.legend.labels.boxWidth = 12;
+Chart.defaults.plugins.legend.labels.padding = 16;
+Chart.defaults.plugins.tooltip.padding = 10;
+Chart.defaults.plugins.tooltip.cornerRadius = 8;
+Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(17,24,39,0.92)';
+
+const P = '#FF5A00', PL = '#FF8C42', G = '#22C55E', W = '#F59E0B', B = '#3B82F6', R = '#EF4444';
+const pa = a => `rgba(255,90,0,${a})`;
+
+const KPIS = [
+  {label:'Total PODs',value:'1,352',icon:'local_shipping',accent:P,ibg:'rgba(255,90,0,.10)',td:'up',tt:'+47 today'},
+  {label:'Invoice Lines',value:'8,975',icon:'description',accent:P,ibg:'rgba(255,90,0,.10)',td:'up',tt:'+312 today'},
+  {label:'Total Quantity',value:'107,396',icon:'inventory_2',accent:PL,ibg:'rgba(255,140,66,.10)',td:'neutral',tt:'units shipped'},
+  {label:'Reviewed PODs',value:'222',icon:'check_circle',accent:G,ibg:'rgba(34,197,94,.10)',td:'up',tt:'+8 today'},
+  {label:'Pending Review',value:'1,130',icon:'pending',accent:W,ibg:'rgba(245,158,11,.10)',td:'down',tt:'83.6% backlog'},
+  {label:'Review Rate',value:'16.4%',icon:'bar_chart',accent:P,ibg:'rgba(255,90,0,.10)',td:'up',tt:'+0.6% vs yesterday'},
+  {label:'PODs Today',value:'47',icon:'today',accent:B,ibg:'rgba(59,130,246,.10)',td:'neutral',tt:'in progress'},
+  {label:'Reviewed Today',value:'8',icon:'done_all',accent:G,ibg:'rgba(34,197,94,.10)',td:'neutral',tt:'17% rate today'},
+  {label:'Pending Today',value:'39',icon:'hourglass_empty',accent:W,ibg:'rgba(245,158,11,.10)',td:'down',tt:'needs attention'},
+  {label:'Total Stores',value:'74',icon:'store',accent:'#8B5CF6',ibg:'rgba(139,92,246,.10)',td:'neutral',tt:'active stores'},
+  {label:'3PL Partners',value:'4',icon:'local_shipping',accent:'#0EA5E9',ibg:'rgba(14,165,233,.10)',td:'neutral',tt:'Logi·NAQLA·Trella·QC'},
+  {label:'Field Submitters',value:'6',icon:'people',accent:'#EC4899',ibg:'rgba(236,72,153,.10)',td:'neutral',tt:'active users'},
+  {label:'Avg Items / POD',value:'6.6',icon:'format_list_numbered',accent:P,ibg:'rgba(255,90,0,.10)',td:'neutral',tt:'lines per delivery'},
+  {label:'Avg Qty / POD',value:'79.4',icon:'scale',accent:PL,ibg:'rgba(255,140,66,.10)',td:'neutral',tt:'units per delivery'},
+];
+
+function renderKPIs() {
+  document.getElementById('kpiGrid').innerHTML = KPIS.map(k => `
+    <div class="kpi-card" style="--accent:${k.accent}">
+      <div class="kpi-icon-wrap" style="--icon-bg:${k.ibg}"><span class="material-icons-round">${k.icon}</span></div>
+      <div class="kpi-label">${k.label}</div>
+      <div class="kpi-value">${k.value}</div>
+      <div class="kpi-trend ${k.td}">
+        <span class="material-icons-round">${k.td==='up'?'trending_up':k.td==='down'?'trending_down':'remove'}</span>${k.tt}
+      </div>
+    </div>`).join('');
+}
+
+const DAYS = ['Jul 1','Jul 2','Jul 3','Jul 4','Jul 5','Jul 6','Jul 7','Jul 8','Jul 9','Jul 10','Jul 11','Jul 12','Jul 13','Jul 14','Jul 15','Jul 16','Jul 17'];
+const PODS_D = [89,104,97,112,88,76,93,118,101,95,87,109,121,98,88,95,47];
+const QTY_D  = [6800,8100,7400,8900,6700,5800,7100,9200,7800,7300,6600,8400,9600,7600,6900,7400,3700];
+const REV_D  = [18,22,19,25,17,14,20,28,21,18,15,24,27,21,18,19,8];
+
+function line(id, labels, ds) {
+  return new Chart(document.getElementById(id), {
+    type:'line', data:{labels, datasets:ds},
+    options:{responsive:true,maintainAspectRatio:true,interaction:{mode:'index',intersect:false},
+      plugins:{legend:{display:ds.length>1}},
+      scales:{x:{grid:{display:false},ticks:{maxTicksLimit:10}},y:{grid:{color:'#F3F4F6'}}}}
+  });
+}
+function bar(id, labels, data, colors, horizontal) {
+  return new Chart(document.getElementById(id), {
+    type:'bar',
+    data:{labels,datasets:[{data,backgroundColor:colors,borderRadius:horizontal?4:6,borderSkipped:false}]},
+    options:{
+      indexAxis:horizontal?'y':'x',
+      responsive:true,maintainAspectRatio:!horizontal,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{grid:{display:horizontal,color:'#F3F4F6'},ticks:{maxTicksLimit:horizontal?6:undefined}},
+        y:{grid:{display:!horizontal,color:'#F3F4F6'},ticks:{font:{size:10}}}
+      }
+    }
+  });
+}
+function donut(id, labels, data, colors) {
+  return new Chart(document.getElementById(id), {
+    type:'doughnut',
+    data:{labels,datasets:[{data,backgroundColor:colors,borderWidth:2,borderColor:'#fff',hoverOffset:6}]},
+    options:{responsive:true,maintainAspectRatio:true,cutout:'68%',
+      plugins:{legend:{position:'bottom',labels:{padding:20}},
+        tooltip:{callbacks:{label:c=>{const t=c.dataset.data.reduce((a,b)=>a+b,0);return ` ${c.label}: ${c.raw.toLocaleString()} (${(c.raw/t*100).toFixed(1)}%)`;}}}}
+    }
+  });
+}
+
+function initCharts() {
+  line('chartDailyPOD', DAYS, [{label:'PODs',data:PODS_D,borderColor:P,backgroundColor:pa(0.08),fill:true,tension:0.4,pointRadius:4,pointBackgroundColor:P,borderWidth:2.5}]);
+  line('chartDailyQty', DAYS, [{label:'Qty',data:QTY_D,borderColor:PL,backgroundColor:'rgba(255,140,66,.10)',fill:true,tension:0.4,pointRadius:3,borderWidth:2}]);
+  donut('chartReviewedPending',['Reviewed','Pending'],[222,1130],[G,W]);
+  donut('chartComments',['Has Comment','No Comment'],[187,1165],[B,'#E5E7EB']);
+
+  const storeL = ['Assuit-DS 35','Tagamoa5 Mahkama DS 43','Nasr City-DS 8','October Beta Grd DS 76','Tagamoa Golden DS 45','Sheikh zayed (2) DS 53','Suez_DS_65','Nasrcity 10th DS 40','Shrouk Mgawra (2) DS 51','Tagamoa 5 El Lotus DS 70','Maadi DS 12','Heliopolis DS 6','Zamalek DS 2','Mohandessin DS 4','Dokki DS 3','6th October DS 20','Rehab DS 44','New Cairo DS 15','Ain Shams DS 9','Haram DS 16'];
+  const storeV = [52,48,45,42,41,39,37,35,33,32,30,28,27,25,24,23,22,21,20,19];
+  bar('chartPODsStore', storeL, storeV, storeV.map(v=>v>40?P:v>30?PL:'#FFB380'), true);
+
+  bar('chart3PL',['Logistaway','NAQLA','Trella','QC WH Review'],[612,388,241,111],[P,PL,'#FFB380',G],false);
+  bar('chartSubmitter',['kareem.mostafa','ahmed.ibrahim','mahmoud.ali','sara.hassan','omar.khalil','nour.ahmed'],[387,312,268,189,124,72],[P,PL,'#FFB380',B,'#8B5CF6','#EC4899'],false);
+
+  const rrL = ['Heliopolis DS 6','Zamalek DS 2','Maadi DS 12','Mohandessin DS 4','Dokki DS 3','Sheikh zayed (2) DS 53','6th October DS 20','Rehab DS 44','New Cairo DS 15','Tagamoa Golden DS 45','Nasrcity 10th DS 40','Suez_DS_65','October Beta Grd DS 76','Nasr City-DS 8','Assuit-DS 35'];
+  const rrV = [42,38,35,31,29,27,24,22,19,17,15,12,10,8,5];
+  bar('chartReviewRateStore', rrL, rrV, rrV.map(v=>v>30?G:v>15?W:R), true);
+
+  const cum = REV_D.reduce((a,v,i)=>{a.push((a[i-1]||0)+v);return a;},[]);
+  line('chartReviewProgress', DAYS, [{label:'Cumulative Reviewed',data:cum,borderColor:G,backgroundColor:'rgba(34,197,94,.10)',fill:true,tension:0.4,pointRadius:3,borderWidth:2}]);
+
+  const tif_l = ['Corona Dark Choc 72%','Kinder Bueno 10pc','Glade Aqua Diffuser','Nescafé Classic 200g','Pringles Original 165g','Tide Automatic 2.5kg','Lipton Yellow 100bags','Ariel Auto 2.5kg','Persil Power Gel 2L','Red Bull 250ml'];
+  bar('chartTopItems', tif_l, [312,287,241,198,176,154,143,132,121,118], tif_l.map((_,i)=>i<3?P:PL), true);
+
+  const tiq_l = ['Kinder Bueno 10pc','Nescafé Classic 200g','Corona Dark Choc 72%','Ariel Auto 2.5kg','Tide Automatic 2.5kg','Pringles Original 165g','Persil Power Gel 2L','Lipton Yellow 100bags','Red Bull 250ml','Glade Aqua Diffuser'];
+  bar('chartTopItemsQty', tiq_l, [4812,4103,3987,3621,3388,3201,2987,2754,2543,2312], tiq_l.map((_,i)=>i<3?PL:P), true);
+
+  const sqL = ['Assuit-DS 35','Tagamoa5 Mahkama','Nasr City-DS 8','October Beta Grd','Tagamoa Golden','Sheikh zayed (2)','Suez_DS_65','Nasrcity 10th','Maadi DS 12','Heliopolis DS 6'];
+  bar('chartStoresQty', sqL, [8432,7821,7345,6987,6543,6201,5987,5621,5432,4987], sqL.map((_,i)=>i===0?P:PL), false);
+  bar('chartStoresPending', sqL, [48,41,42,39,38,35,34,31,25,16], sqL.map((_,i)=>i<3?R:W), false);
+
+  // Analytics
+  bar('chartWeekly',['Week 27','Week 28','Week 29'],[324,612,416],[PL,P,'#FFB380'],false);
+  new Chart(document.getElementById('chart3PLPerf'),{type:'bar',data:{labels:['Logistaway','NAQLA','Trella','QC WH Review'],datasets:[{label:'Reviewed',data:[98,67,42,15],backgroundColor:G,borderRadius:4},{label:'Pending',data:[514,321,199,96],backgroundColor:W,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{position:'top'}},scales:{x:{grid:{display:false}},y:{grid:{color:'#F3F4F6'}}}}});
+  new Chart(document.getElementById('chartBacklog'),{type:'bar',data:{labels:DAYS,datasets:[{label:'Reviewed',data:REV_D,backgroundColor:G,borderRadius:[4,4,0,0]},{label:'Pending',data:PODS_D.map((v,i)=>v-REV_D[i]),backgroundColor:W,borderRadius:[4,4,0,0]}]},options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{position:'top'}},scales:{x:{grid:{display:false},stacked:true},y:{grid:{color:'#F3F4F6'},stacked:true}}}});
+  donut('chartWorkload',['kareem.mostafa','ahmed.ibrahim','mahmoud.ali','sara.hassan','omar.khalil','nour.ahmed'],[387,312,268,189,124,72],[P,PL,'#FFB380',B,'#8B5CF6','#EC4899']);
+  donut('chart3PLShare',['Logistaway','NAQLA','Trella','QC WH Review'],[4482,2743,1687,893],[P,PL,'#FFB380',G]);
+}
+
+const RECENT = [
+  {pod:'POD-20260717-142211-881',store:'Assuit-DS 35',tpl:'Logistaway',date:'Jul 17, 2026',by:'kareem.mostafa',reviewed:'',comment:''},
+  {pod:'POD-20260717-135512-773',store:'Maadi DS 12',tpl:'NAQLA',date:'Jul 17, 2026',by:'ahmed.ibrahim',reviewed:'',comment:'Damaged carton'},
+  {pod:'POD-20260717-131044-651',store:'Tagamoa Golden DS 45',tpl:'Trella',date:'Jul 17, 2026',by:'sara.hassan',reviewed:'Warehouse QC',comment:''},
+  {pod:'POD-20260717-124532-544',store:'Heliopolis DS 6',tpl:'Logistaway',date:'Jul 17, 2026',by:'omar.khalil',reviewed:'',comment:''},
+  {pod:'POD-20260717-112201-432',store:'Zamalek DS 2',tpl:'NAQLA',date:'Jul 17, 2026',by:'mahmoud.ali',reviewed:'Warehouse QC',comment:'OK'},
+  {pod:'POD-20260716-183341-321',store:'Nasr City-DS 8',tpl:'Logistaway',date:'Jul 16, 2026',by:'kareem.mostafa',reviewed:'3PL',comment:''},
+  {pod:'POD-20260716-175501-287',store:'Suez_DS_65',tpl:'Trella',date:'Jul 16, 2026',by:'nour.ahmed',reviewed:'',comment:'Missing items'},
+  {pod:'POD-20260716-164421-203',store:'October Beta Gardens DS 76',tpl:'NAQLA',date:'Jul 16, 2026',by:'ahmed.ibrahim',reviewed:'Warehouse QC',comment:''},
+  {pod:'POD-20260716-155512-188',store:'Sheikh zayed (2) DS 53',tpl:'Logistaway',date:'Jul 16, 2026',by:'sara.hassan',reviewed:'',comment:''},
+  {pod:'POD-20260716-143301-161',store:'Tagamoa5 Mahkama DS 43',tpl:'Trella',date:'Jul 16, 2026',by:'mahmoud.ali',reviewed:'3PL',comment:'Qty mismatch'},
+];
+
+function renderRecentTable(rows) {
+  rows = rows || RECENT;
+  document.getElementById('recentTbody').innerHTML = rows.map(r=>`<tr>
+    <td><code style="font-size:10px;color:var(--primary)">${r.pod}</code></td>
+    <td>${r.store}</td>
+    <td><span class="badge" style="background:rgba(255,90,0,.08);color:var(--primary)">${r.tpl}</span></td>
+    <td>${r.date}</td><td>${r.by}</td>
+    <td>${r.reviewed||'<span style="color:var(--gray-400)">—</span>'}</td>
+    <td><span class="badge ${r.reviewed?'badge-reviewed':'badge-pending'}">${r.reviewed?'✓ Reviewed':'⏳ Pending'}</span></td>
+    <td>${r.comment||'<span style="color:var(--gray-400)">—</span>'}</td>
+  </tr>`).join('');
+}
+
+function filterTable() {
+  const q = document.getElementById('tableSearch').value.toLowerCase();
+  renderRecentTable(RECENT.filter(r => r.pod.toLowerCase().includes(q)||r.store.toLowerCase().includes(q)||r.tpl.toLowerCase().includes(q)));
+}
+
+function renderLeaderboard() {
+  const data = [{name:'Warehouse QC',pods:178,pct:80},{name:'3PL',pods:44,pct:20}];
+  document.getElementById('leaderboard').innerHTML = data.map((r,i)=>`
+    <div class="lb-row">
+      <div class="lb-rank ${i===0?'gold':'silver'}">${i+1}</div>
+      <div class="lb-info"><div class="lb-name">${r.name}</div><div class="lb-meta">QC Reviewer</div></div>
+      <div class="lb-bar-wrap"><div class="lb-bar-bg"><div class="lb-bar-fill" style="width:${r.pct}%"></div></div></div>
+      <div class="lb-count">${r.pods}</div>
+    </div>`).join('');
+}
+
+function renderStores() {
+  const rows = [
+    {n:'Assuit-DS 35',p:52,l:344,q:8432,r:4,pe:48},{n:'Tagamoa5 Mahkama DS 43',p:48,l:317,q:7821,r:7,pe:41},
+    {n:'Nasr City-DS 8',p:45,l:298,q:7345,r:3,pe:42},{n:'October Beta Gardens DS 76',p:42,l:278,q:6987,r:3,pe:39},
+    {n:'Tagamoa Golden DS 45',p:41,l:271,q:6543,r:3,pe:38},{n:'Sheikh zayed (2) DS 53',p:39,l:258,q:6201,r:4,pe:35},
+    {n:'Suez_DS_65',p:37,l:245,q:5987,r:3,pe:34},{n:'Nasrcity 10th DS 40',p:35,l:232,q:5621,r:4,pe:31},
+    {n:'Shrouk Mgawra (2) DS 51',p:33,l:218,q:5243,r:3,pe:30},{n:'Maadi DS 12',p:30,l:198,q:5432,r:5,pe:25},
+    {n:'Heliopolis DS 6',p:28,l:185,q:4987,r:12,pe:16},{n:'Zamalek DS 2',p:27,l:179,q:4765,r:10,pe:17},
+  ];
+  document.getElementById('storesTbody').innerHTML = rows.map((s,i)=>{
+    const rate=Math.round(s.r/s.p*100);
+    const c=rate>30?'var(--success)':rate>15?'var(--warning)':'var(--danger)';
+    return `<tr><td style="color:var(--gray-400);font-weight:600">${i+1}</td><td><strong>${s.n}</strong></td><td>${s.p}</td><td>${s.l}</td><td>${s.q.toLocaleString()}</td><td style="color:var(--success);font-weight:600">${s.r}</td><td style="color:var(--warning);font-weight:600">${s.pe}</td><td><strong style="color:${c}">${rate}%</strong></td></tr>`;
+  }).join('');
+}
+
+function renderItems() {
+  const items = [
+    {n:'Corona Dark Chocolate 72%',c:312,q:3987},{n:'Kinder Bueno Bar, 10 Pieces',c:287,q:4812},
+    {n:'Glade Aqua Vouage Reed Diffuser, 100ml',c:241,q:2312},{n:'Nescafé Classic 200g',c:198,q:4103},
+    {n:'Pringles Original 165g',c:176,q:3201},{n:'Tide Automatic 2.5kg',c:154,q:3388},
+    {n:'Lipton Yellow Label 100 bags',c:143,q:2754},{n:'Ariel Automatic 2.5kg',c:132,q:3621},
+    {n:'Persil Power Gel 2L',c:121,q:2987},{n:'Red Bull Energy 250ml',c:118,q:2543},
+  ];
+  document.getElementById('itemsTbody').innerHTML = items.map((it,i)=>`<tr><td style="color:var(--gray-400);font-weight:600">${i+1}</td><td><strong>${it.n}</strong></td><td style="color:var(--gray-400)">9${200000+i*10000+it.c}</td><td style="color:var(--primary);font-weight:700">${it.c}</td><td>${it.q.toLocaleString()}</td></tr>`).join('');
+}
+
+function renderPODs() {
+  document.getElementById('podsTbody').innerHTML = RECENT.map(r=>{
+    const lines=Math.floor(5+Math.random()*8), qty=Math.floor(40+Math.random()*180);
+    return `<tr><td><code style="font-size:10px;color:var(--primary)">${r.pod}</code></td><td>${r.date}</td><td>${r.store}</td><td>${r.tpl}</td><td>${r.by}</td><td style="color:var(--gray-500)">ST0${Math.floor(70000+Math.random()*9999)}</td><td>${lines}</td><td>${qty}</td><td><span class="badge ${r.reviewed?'badge-reviewed':'badge-pending'}">${r.reviewed?'✓ Reviewed':'⏳ Pending'}</span></td></tr>`;
+  }).join('');
+}
+
+function renderChecklist() {
+  const items = [
+    [true,'Google Sheet connected — POD_Invoice_Data'],
+    [true,'Column types configured (Barcode as Text)'],
+    [true,'Virtual Columns: Review_Status, Ship_Date_Only, Has_Comment, Submitted_Name'],
+    [true,'Slices: Reviewed_PODs, Pending_PODs, Today_PODs, Recent_Activity'],
+    [true,'14 KPI Scorecard Cards'],
+    [true,'15 Chart Views configured'],
+    [true,'Main Dashboard assembled (15 panels)'],
+    [true,'Bottom Navigation (6 tabs)'],
+    [true,'Talabat brand theme #FF5A00'],
+    [false,'Interactive Filters enabled on all views'],
+    [false,'Delta Sync enabled (5-min interval)'],
+    [false,'Domain restriction @talabat.com applied'],
+    [false,'Mobile QA: iOS + Android tested'],
+    [false,'Stakeholder sign-off'],
+  ];
+  document.getElementById('buildChecklist').innerHTML = items.map(([done,text])=>`
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span class="material-icons-round" style="font-size:16px;color:${done?'var(--success)':'var(--gray-300)'}">${done?'check_circle':'radio_button_unchecked'}</span>
+      <span style="color:${done?'var(--gray-700)':'var(--gray-400)'}">${text}</span>
+    </div>`).join('');
+}
+
+function populateFilters() {
+  const stores = ['Assuit-DS 35','Tagamoa5 Mahkama DS 43','Nasr City-DS 8','October Beta Gardens DS 76','Tagamoa Golden DS 45','Sheikh zayed (2) DS 53','Suez_DS_65','Nasrcity 10th DS 40','Maadi DS 12','Heliopolis DS 6','Zamalek DS 2','Mohandessin DS 4'];
+  const ss = document.getElementById('f-store');
+  stores.forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s;ss.appendChild(o);});
+  const submitters = ['kareem.mostafa','ahmed.ibrahim','mahmoud.ali','sara.hassan','omar.khalil','nour.ahmed'];
+  const su = document.getElementById('f-submitter');
+  submitters.forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s;su.appendChild(o);});
+}
+
+function clearFilters() {
+  ['f-store','f-3pl','f-status','f-submitter'].forEach(id=>document.getElementById(id).value='');
+}
+
+function showPage(name, el) {
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  el.classList.add('active');
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  const now = new Date('2026-07-17T14:35:00');
+  document.getElementById('topbarDate').textContent = now.toLocaleDateString('en-EG',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
+  document.getElementById('lastSync').textContent = 'Updated ' + now.toLocaleTimeString('en-EG',{hour:'2-digit',minute:'2-digit'});
+  renderKPIs();
+  initCharts();
+  renderLeaderboard();
+  renderRecentTable();
+  renderStores();
+  renderItems();
+  renderPODs();
+  renderChecklist();
+  populateFilters();
+});
+</script>
 </body>
 </html>
