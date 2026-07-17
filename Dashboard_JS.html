@@ -3,11 +3,6 @@
 //  Talabat Warehouse QC Dashboard — Frontend Engine (Dashboard_JS)
 // ═══════════════════════════════════════════════════════════════════
 
-/* ── Chart.js global defaults ──────────────────────────────────── */
-Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
-Chart.defaults.color = '#94A3B8';
-Chart.defaults.borderColor = '#F1F5F9';
-
 /* ── Color Palette ─────────────────────────────────────────────── */
 const PALETTE = {
   orange: '#FF6B00', blue: '#3B82F6', green: '#10B981',
@@ -27,7 +22,7 @@ const AppState = {
     dateFrom: null, dateTo: null,
     stores: new Set(), tpls: new Set(), users: new Set(), stnums: new Set(),
   },
-  charts: {},             // Chart.js instances keyed by id
+
   trendMode: 'daily',
   actPage: 1, actPageSize: 20,
   actSort: { key: 'date', dir: -1 },
@@ -201,219 +196,275 @@ function getWeekLabel(dt) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   CHART MANAGER
+   CHART ENGINE — Canvas 2D + SVG (zero external dependencies)
    ═══════════════════════════════════════════════════════════════ */
 const ChartManager = {
 
-  destroy(id) {
-    if (AppState.charts[id]) {
-      AppState.charts[id].destroy();
-      delete AppState.charts[id];
+  _tt: null,
+  _donutCbs: {},
+
+  _tooltip() {
+    if (!this._tt) {
+      this._tt = document.createElement('div');
+      this._tt.style.cssText = 'position:fixed;background:#1E293B;border:1px solid #334155;border-radius:8px;padding:10px 14px;font-size:12px;pointer-events:none;z-index:9999;display:none;color:#F1F5F9;min-width:140px';
+      document.body.appendChild(this._tt);
     }
+    return this._tt;
   },
 
-  create(id, config) {
-    this.destroy(id);
-    const ctx = document.getElementById(id);
-    if (!ctx) return null;
-    const chart = new Chart(ctx, config);
-    AppState.charts[id] = chart;
-    return chart;
+  _showTT(e, title, rows) {
+    const tt = this._tooltip();
+    tt.innerHTML = `<div style="font-weight:700;margin-bottom:6px;color:#fff">${title}</div>` +
+      rows.map(([k,v]) => `<div style="display:flex;justify-content:space-between;gap:16px"><span style="color:#94A3B8">${k}</span><span style="font-weight:600">${v}</span></div>`).join('');
+    tt.style.display = 'block';
+    this._moveTT(e);
   },
 
-  /* Horizontal bar chart */
+  _moveTT(e) {
+    const tt = this._tooltip();
+    const x = e.clientX + 14, y = e.clientY - 10;
+    tt.style.left = (x + tt.offsetWidth > window.innerWidth ? x - tt.offsetWidth - 24 : x) + 'px';
+    tt.style.top  = (y + tt.offsetHeight > window.innerHeight ? y - tt.offsetHeight : y) + 'px';
+  },
+
+  _hideTT() { this._tooltip().style.display = 'none'; },
+
+  destroy(id) { /* no-op — no Chart.js instances to clean up */ },
+
+  /* ── Horizontal bar (CSS divs) ─────────────────────────────── */
   hBar(id, labels, values, color, onClick, opts = {}) {
-    const n       = labels.length;
-    const baseH   = opts.baseH || 26;
-    const chartH  = Math.max(200, n * (baseH + 6));
-    const wrap    = document.getElementById(id)?.parentElement;
-    if (wrap) wrap.style.height = chartH + 'px';
-
+    const canvas = document.getElementById(id);
+    if (!canvas) return;
+    const wrap = canvas.parentElement;
+    if (!wrap) return;
+    const max = Math.max(...values, 1);
     const colors = Array.isArray(color)
-      ? color
-      : Array(n).fill(color || PALETTE.blue);
-
-    this.create(id, {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [{ data: values, backgroundColor: colors, borderRadius: 4, borderSkipped: false }]
-      },
-      options: {
-        indexAxis: 'y',
-        responsive: true, maintainAspectRatio: false,
-        animation: { duration: 500, easing: 'easeOutQuart' },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            backgroundColor: '#1E293B', titleColor: '#fff', bodyColor: '#94A3B8',
-            padding: 10, cornerRadius: 8,
-            callbacks: {
-              label: ctx => ' ' + fmtNum(ctx.parsed.x) + (opts.unit ? ' ' + opts.unit : '')
-            }
-          },
-        },
-        scales: {
-          x: {
-            grid: { color: '#F1F5F9' },
-            ticks: { font: { size: 11 }, callback: v => fmtShort(v) }
-          },
-          y: {
-            grid: { display: false },
-            ticks: { font: { size: 11 }, callback: v => truncate(v, 22) }
-          }
-        },
-        onClick: onClick ? (e, els) => {
-          if (els.length) onClick(labels[els[0].index], els[0].index);
-        } : undefined,
-      }
-    });
-  },
-
-  /* Dual-axis line chart */
-  dualLine(id, labels, ds1, ds2, onClick) {
-    const hidden = { pods: false, qty: false };
-    const chart = this.create(id, {
-      type: 'line',
-      data: {
-        labels,
-        datasets: [
-          {
-            label: 'PODs', data: ds1, yAxisID: 'y',
-            borderColor: PALETTE.blue, backgroundColor: hexAlpha(PALETTE.blue, .12),
-            borderWidth: 2.5, pointRadius: 4, pointHoverRadius: 7,
-            pointBackgroundColor: PALETTE.blue, pointBorderColor: '#fff', pointBorderWidth: 2,
-            fill: true, tension: .35,
-          },
-          {
-            label: 'Quantity', data: ds2, yAxisID: 'y1',
-            borderColor: PALETTE.orange, backgroundColor: hexAlpha(PALETTE.orange, .08),
-            borderWidth: 2.5, pointRadius: 4, pointHoverRadius: 7,
-            pointBackgroundColor: PALETTE.orange, pointBorderColor: '#fff', pointBorderWidth: 2,
-            fill: true, tension: .35,
-          },
-        ]
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
-        animation: { duration: 600, easing: 'easeOutQuart' },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            backgroundColor: '#1E293B', titleColor: '#fff', bodyColor: '#CBD5E1',
-            padding: 12, cornerRadius: 10,
-            callbacks: { label: ctx => ' ' + ctx.dataset.label + ': ' + fmtNum(ctx.parsed.y) }
-          },
-        },
-        scales: {
-          x: {
-            grid: { display: false },
-            ticks: { font: { size: 11 }, maxTicksLimit: 10 }
-          },
-          y: {
-            position: 'left',
-            title: { display: true, text: 'PODs', font: { size: 11 }, color: PALETTE.blue },
-            grid: { color: '#F1F5F9' },
-            ticks: { font: { size: 11 }, callback: v => fmtShort(v) }
-          },
-          y1: {
-            position: 'right',
-            title: { display: true, text: 'Quantity', font: { size: 11 }, color: PALETTE.orange },
-            grid: { drawOnChartArea: false },
-            ticks: { font: { size: 11 }, callback: v => fmtShort(v) }
-          }
-        },
-        onClick: onClick ? (e, els) => {
-          if (els.length) onClick(labels[els[0].index]);
-        } : undefined,
-      }
-    });
-
-    // Custom legend with toggle
-    const leg = document.getElementById('trendLegend');
-    if (leg) {
-      leg.innerHTML = ['pods', 'qty'].map((k, i) => `
-        <div class="legend-item" id="leg-${k}" onclick="toggleTrendLine(${i},'${k}')">
-          <div class="legend-dot" style="background:${i===0?PALETTE.blue:PALETTE.orange}"></div>
-          <span>${i===0?'PODs (Invoices)':'Quantity (Remaining Qty)'}</span>
-        </div>`).join('');
+      ? color : Array(labels.length).fill(color || PALETTE.blue);
+    wrap.innerHTML = '<div class="hbar-list">' + labels.map((l, i) => {
+      const w    = (values[i] / max * 100).toFixed(1);
+      const col  = colors[i % colors.length];
+      const safeL = escAttr(l);
+      return `<div class="hbar-item" data-idx="${i}" title="${safeL}" style="cursor:${onClick ? 'pointer' : 'default'}">
+        <div class="hbar-top">
+          <div class="hbar-name">${escHtml(l)}</div>
+          <div class="hbar-val">${fmtNum(values[i])}${opts.unit ? ' ' + opts.unit : ''}</div>
+        </div>
+        <div class="hbar-track"><div class="hbar-fill" style="width:${w}%;background:${col}"></div></div>
+      </div>`;
+    }).join('') + '</div>';
+    if (onClick) {
+      wrap.querySelectorAll('.hbar-item').forEach(el => {
+        el.addEventListener('click', () => onClick(labels[+el.dataset.idx], +el.dataset.idx));
+      });
     }
-  },
-
-  /* Donut chart */
-  donut(id, labels, values, colors, onClick) {
-    const total = values.reduce((s, v) => s + v, 0);
-    this.create(id, {
-      type: 'doughnut',
-      data: {
-        labels,
-        datasets: [{ data: values, backgroundColor: colors, borderWidth: 3, borderColor: '#fff', hoverBorderWidth: 3 }]
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        cutout: '65%',
-        animation: { animateRotate: true, duration: 600, easing: 'easeOutQuart' },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            backgroundColor: '#1E293B', titleColor: '#fff', bodyColor: '#CBD5E1',
-            padding: 10, cornerRadius: 8,
-            callbacks: {
-              label: ctx => {
-                const pct = total ? Math.round(ctx.parsed / total * 100) : 0;
-                return ' ' + fmtNum(ctx.parsed) + ' (' + pct + '%)';
-              }
-            }
-          },
-        },
-        onClick: onClick ? (e, els) => {
-          if (els.length) onClick(labels[els[0].index]);
-        } : undefined,
-      }
-    });
-  },
-
-  /* Vertical bar for users */
-  vBar(id, labels, values, colors, onClick) {
-    this.create(id, {
-      type: 'bar',
-      data: {
-        labels: labels.map(l => truncate(l, 12)),
-        datasets: [{ data: values, backgroundColor: colors, borderRadius: 6, borderSkipped: false }]
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        animation: { duration: 500, easing: 'easeOutQuart' },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            backgroundColor: '#1E293B', titleColor: '#fff', bodyColor: '#CBD5E1',
-            padding: 10, cornerRadius: 8,
-            callbacks: { label: ctx => ' ' + fmtNum(ctx.parsed.y) + ' PODs' }
-          },
-        },
-        scales: {
-          x: { grid: { display: false }, ticks: { font: { size: 11 } } },
-          y: { grid: { color: '#F1F5F9' }, ticks: { font: { size: 11 }, callback: v => fmtShort(v) } }
-        },
-        onClick: onClick ? (e, els) => {
-          if (els.length) onClick(labels[els[0].index], els[0].index);
-        } : undefined,
-      }
-    });
   },
 
   highlightBar(id, activeIdx) {
-    const chart = AppState.charts[id];
-    if (!chart) return;
-    const ds = chart.data.datasets[0];
-    const baseColor = typeof ds.backgroundColor === 'string'
-      ? ds.backgroundColor : (Array.isArray(ds.backgroundColor) ? ds.backgroundColor[0] : PALETTE.blue);
-    ds.backgroundColor = chart.data.labels.map((_, i) =>
-      activeIdx === null || i === activeIdx ? baseColor : hexAlpha(baseColor, .3));
-    chart.update('none');
-  }
+    const canvas = document.getElementById(id);
+    if (!canvas) return;
+    const wrap = canvas.parentElement;
+    if (!wrap) return;
+    wrap.querySelectorAll('.hbar-item').forEach((el, i) => {
+      el.classList.toggle('hbar-active', activeIdx === null || i === activeIdx);
+    });
+  },
+
+  /* ── Dual-axis line (Canvas 2D) ────────────────────────────── */
+  dualLine(id, labels, ds1, ds2, onClick) {
+    const canvas = document.getElementById(id);
+    if (!canvas) return;
+    const dpr  = window.devicePixelRatio || 1;
+    const W    = canvas.parentElement.clientWidth  || 600;
+    const H    = 260;
+    canvas.width  = W * dpr; canvas.height = H * dpr;
+    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+    const ctx  = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    const PAD  = { t: 28, r: 60, b: 44, l: 52 };
+    const cW   = W - PAD.l - PAD.r;
+    const cH   = H - PAD.t - PAD.b;
+    const max1 = Math.max(...ds1, 1);
+    const max2 = Math.max(...ds2, 1);
+    const n    = labels.length;
+
+    // Grid lines
+    ctx.strokeStyle = 'rgba(203,213,225,.4)'; ctx.lineWidth = 1;
+    for (let i = 0; i <= 5; i++) {
+      const y = PAD.t + cH - (i / 5) * cH;
+      ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(PAD.l + cW, y); ctx.stroke();
+    }
+
+    // Y-axis labels — left (PODs)
+    ctx.font = '10px Segoe UI'; ctx.fillStyle = '#64748B';
+    ctx.textAlign = 'right';
+    for (let i = 0; i <= 5; i++) {
+      ctx.fillText(fmtShort(Math.round(i / 5 * max1)), PAD.l - 6, PAD.t + cH - (i / 5) * cH + 3);
+    }
+    // Y-axis labels — right (Qty)
+    ctx.textAlign = 'left';
+    for (let i = 0; i <= 5; i++) {
+      ctx.fillText(fmtShort(Math.round(i / 5 * max2)), PAD.l + cW + 6, PAD.t + cH - (i / 5) * cH + 3);
+    }
+
+    // X-axis labels
+    ctx.textAlign = 'center';
+    const step = Math.max(1, Math.floor(n / 10));
+    for (let i = 0; i < n; i += step) {
+      const x = PAD.l + (i / (n - 1 || 1)) * cW;
+      ctx.fillText(labels[i].slice(5), x, PAD.t + cH + 16);
+    }
+
+    // Draw filled area + line helper
+    const drawSeries = (ds, maxV, col) => {
+      if (!n) return;
+      const pts = ds.map((v, i) => [PAD.l + (i / (n - 1 || 1)) * cW, PAD.t + cH - (v / maxV) * cH]);
+      const grad = ctx.createLinearGradient(0, PAD.t, 0, PAD.t + cH);
+      grad.addColorStop(0, col + '40'); grad.addColorStop(1, col + '08');
+      ctx.beginPath();
+      pts.forEach(([x, y], i) => i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y));
+      ctx.strokeStyle = col; ctx.lineWidth = 2.5; ctx.stroke();
+      ctx.lineTo(PAD.l + cW, PAD.t + cH); ctx.lineTo(PAD.l, PAD.t + cH);
+      ctx.closePath(); ctx.fillStyle = grad; ctx.fill();
+      pts.forEach(([x, y]) => {
+        ctx.beginPath(); ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+        ctx.fillStyle = col; ctx.fill();
+        ctx.beginPath(); ctx.arc(x, y, 1.5, 0, Math.PI * 2);
+        ctx.fillStyle = '#fff'; ctx.fill();
+      });
+    };
+    drawSeries(ds2, max2, PALETTE.orange);
+    drawSeries(ds1, max1, PALETTE.blue);
+
+    // Legend
+    const leg = document.getElementById('trendLegend');
+    if (leg) {
+      leg.innerHTML = [
+        { col: PALETTE.blue,   k: 'pods', lbl: 'PODs (Invoices)' },
+        { col: PALETTE.orange, k: 'qty',  lbl: 'Quantity (Remaining Qty)' },
+      ].map(s => `<div class="legend-item" id="leg-${s.k}">
+        <div class="legend-dot" style="background:${s.col}"></div><span>${s.lbl}</span>
+      </div>`).join('');
+    }
+
+    // Interaction
+    const self = this;
+    canvas.onmousemove = (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const idx  = Math.round(((e.clientX - rect.left - PAD.l) / cW) * (n - 1));
+      if (idx < 0 || idx >= n) { self._hideTT(); return; }
+      self._showTT(e, labels[idx], [['PODs', fmtNum(ds1[idx])], ['Qty', fmtNum(ds2[idx])]]);
+    };
+    canvas.onmouseleave = () => self._hideTT();
+    canvas.onclick = onClick ? (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const idx  = Math.round(((e.clientX - rect.left - PAD.l) / cW) * (n - 1));
+      if (idx >= 0 && idx < n) onClick(labels[idx]);
+    } : null;
+  },
+
+  /* ── SVG Donut ─────────────────────────────────────────────── */
+  donut(id, labels, values, colors, onClick) {
+    const canvas = document.getElementById(id);
+    if (!canvas) return;
+    const wrap  = canvas.parentElement;
+    if (!wrap)  return;
+    const total = values.reduce((s, v) => s + v, 0) || 1;
+    const R = 52, r = 32, cx = 68, cy = 68, sz = 136;
+    let angle = -Math.PI / 2;
+    let paths = '';
+
+    labels.forEach((l, i) => {
+      const sweep = (values[i] / total) * 2 * Math.PI;
+      if (sweep <= 0) return;
+      const x1  = cx + R * Math.cos(angle),     y1  = cy + R * Math.sin(angle);
+      angle += sweep;
+      const x2  = cx + R * Math.cos(angle),     y2  = cy + R * Math.sin(angle);
+      const ix1 = cx + r * Math.cos(angle - sweep), iy1 = cy + r * Math.sin(angle - sweep);
+      const ix2 = cx + r * Math.cos(angle),     iy2 = cy + r * Math.sin(angle);
+      const lg  = sweep > Math.PI ? 1 : 0;
+      const col = colors[i] || '#94A3B8';
+      const cb  = onClick ? `onclick="ChartManager._donutCbs['${id}'] && ChartManager._donutCbs['${id}']('${escAttr(l)}')"` : '';
+      paths += `<path d="M${x1.toFixed(2)},${y1.toFixed(2)} A${R},${R},0,${lg},1,${x2.toFixed(2)},${y2.toFixed(2)} L${ix2.toFixed(2)},${iy2.toFixed(2)} A${r},${r},0,${lg},0,${ix1.toFixed(2)},${iy1.toFixed(2)} Z" fill="${col}" style="cursor:${onClick ? 'pointer' : 'default'};transition:opacity .15s" onmouseover="this.style.opacity=.7" onmouseout="this.style.opacity=1" ${cb}/>`;
+    });
+
+    const topIdx = values.indexOf(Math.max(...values));
+    const topPct = topIdx >= 0 ? (values[topIdx] / total * 100).toFixed(0) + '%' : '';
+    const topLbl = (labels[topIdx] || '').slice(0, 11);
+    paths += `<text x="${cx}" y="${cy - 5}" text-anchor="middle" fill="#1E293B" font-size="13" font-weight="700" font-family="Segoe UI,sans-serif">${topPct}</text>`;
+    paths += `<text x="${cx}" y="${cy + 11}" text-anchor="middle" fill="#64748B" font-size="9" font-family="Segoe UI,sans-serif">${topLbl}</text>`;
+
+    wrap.innerHTML = `<svg width="${sz}" height="${sz}" viewBox="0 0 ${sz} ${sz}" style="display:block;margin:0 auto">${paths}</svg>`;
+    if (onClick) this._donutCbs[id] = onClick;
+  },
+
+  /* ── Vertical bar (Canvas 2D) ──────────────────────────────── */
+  vBar(id, labels, values, colors, onClick) {
+    const canvas = document.getElementById(id);
+    if (!canvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    const W   = canvas.parentElement.clientWidth || 500;
+    const H   = 200;
+    canvas.width  = W * dpr; canvas.height = H * dpr;
+    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    const PAD  = { t: 20, r: 14, b: 44, l: 42 };
+    const cW   = W - PAD.l - PAD.r;
+    const cH   = H - PAD.t - PAD.b;
+    const max  = Math.max(...values, 1);
+    const n    = labels.length;
+    const slot = cW / n;
+    const bW   = slot * 0.62;
+    const bGap = slot * 0.19;
+
+    // Grid
+    ctx.font = '10px Segoe UI'; ctx.fillStyle = '#64748B';
+    ctx.strokeStyle = 'rgba(203,213,225,.4)'; ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const y = PAD.t + cH - (i / 4) * cH;
+      ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(PAD.l + cW, y); ctx.stroke();
+      ctx.textAlign = 'right';
+      ctx.fillText(fmtShort(Math.round(i / 4 * max)), PAD.l - 4, y + 3);
+    }
+
+    // Bars
+    for (let i = 0; i < n; i++) {
+      const x   = PAD.l + i * slot + bGap;
+      const bH  = (values[i] / max) * cH;
+      const y   = PAD.t + cH - bH;
+      const col = colors[i % colors.length] || PALETTE.blue;
+      const grad = ctx.createLinearGradient(0, y, 0, y + bH);
+      grad.addColorStop(0, col); grad.addColorStop(1, col + '88');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(x, y, bW, bH, [4, 4, 0, 0]);
+      else ctx.rect(x, y, bW, bH);
+      ctx.fill();
+      ctx.textAlign = 'center'; ctx.fillStyle = '#64748B';
+      ctx.fillText(truncate(labels[i], 9), x + bW / 2, PAD.t + cH + 16);
+      if (bH > 18) {
+        ctx.fillStyle = '#1E293B';
+        ctx.fillText(fmtShort(values[i]), x + bW / 2, y - 5);
+      }
+    }
+
+    // Interaction
+    const self = this;
+    canvas.onmousemove = (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const idx  = Math.floor((e.clientX - rect.left - PAD.l) / slot);
+      if (idx < 0 || idx >= n) { self._hideTT(); return; }
+      self._showTT(e, labels[idx], [['PODs', fmtNum(values[idx])]]);
+    };
+    canvas.onmouseleave = () => self._hideTT();
+    canvas.onclick = onClick ? (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const idx  = Math.floor((e.clientX - rect.left - PAD.l) / slot);
+      if (idx >= 0 && idx < n) onClick(labels[idx], idx);
+    } : null;
+  },
 };
 
 /* ═══════════════════════════════════════════════════════════════
@@ -877,13 +928,7 @@ function setTrendMode(mode, btn) {
 }
 
 function toggleTrendLine(dsIdx, key) {
-  const chart = AppState.charts['trendChart'];
-  if (!chart) return;
-  const ds = chart.data.datasets[dsIdx];
-  ds.hidden = !ds.hidden;
-  chart.update();
-  const leg = document.getElementById('leg-' + key);
-  if (leg) leg.classList.toggle('hidden', ds.hidden);
+  /* no-op — chart is Canvas 2D, no Chart.js instance to toggle */
 }
 
 function filterActivity(q) {
