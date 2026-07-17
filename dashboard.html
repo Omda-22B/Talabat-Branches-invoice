@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Talabat Branches — Invoice POD Dashboard</title>
+<style>
+/* ── Design tokens ── */
+:root {
+  color-scheme: light;
+  --surface-page:   #f4f4f0;
+  --surface-card:   #fcfcfb;
+  --surface-card2:  #f9f9f7;
+  --text-primary:   #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted:     #898781;
+  --grid:           #e1e0d9;
+  --axis:           #c3c2b7;
+  --border:         rgba(11,11,11,0.10);
+  /* categorical (validated) */
+  --c1: #2a78d6;
+  --c2: #008300;
+  --c3: #e87ba4;
+  --c4: #eda100;
+  --c5: #1baf7a;
+  --c6: #eb6834;
+  --c7: #4a3aa7;
+  --c8: #e34948;
+  /* status */
+  --good:     #0ca30c;
+  --warning:  #fab219;
+  --serious:  #ec835a;
+  --critical: #d03b3b;
+  /* kpi accent */
+  --kpi-alert: #d03b3b;
+}
+[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-page:   #0d0d0d;
+  --surface-card:   #1a1a19;
+  --surface-card2:  #1f1f1e;
+  --text-primary:   #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted:     #898781;
+  --grid:           #2c2c2a;
+  --axis:           #383835;
+  --border:         rgba(255,255,255,0.10);
+  --c1: #3987e5;
+  --c2: #008300;
+  --c3: #d55181;
+  --c4: #c98500;
+  --c5: #199e70;
+  --c6: #d95926;
+  --c7: #9085e9;
+  --c8: #e66767;
+  --good:     #0ca30c;
+  --warning:  #fab219;
+  --serious:  #ec835a;
+  --critical: #e66767;
+  --kpi-alert: #e66767;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--surface-page);
+  color: var(--text-primary);
+  min-height: 100vh;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ── Header ── */
+.header {
+  background: var(--surface-card);
+  border-bottom: 1px solid var(--border);
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.header-left { display: flex; align-items: center; gap: 12px; }
+.brand {
+  display: flex; align-items: center; gap: 8px;
+  font-weight: 700; font-size: 17px; color: var(--text-primary);
+}
+.brand svg { flex-shrink: 0; }
+.subtitle { font-size: 12px; color: var(--text-muted); margin-top: 1px; }
+.header-right { display: flex; align-items: center; gap: 10px; }
+.badge {
+  background: var(--surface-card2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.theme-btn {
+  background: var(--surface-card2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.theme-btn:hover { background: var(--grid); }
+
+/* ── Layout ── */
+.main { padding: 20px 24px 40px; max-width: 1400px; margin: 0 auto; }
+.section-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+  margin-top: 28px;
+}
+.grid-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 900px) {
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+  .main { padding: 12px 12px 32px; }
+  .grid-kpis { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ── KPI Tile ── */
+.kpi {
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+  overflow: hidden;
+}
+.kpi.alert { border-color: var(--kpi-alert); }
+.kpi-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.kpi-value {
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.15;
+}
+.kpi.alert .kpi-value { color: var(--kpi-alert); }
+.kpi-sub {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+.kpi-icon {
+  position: absolute;
+  top: 14px; right: 16px;
+  opacity: 0.13;
+  font-size: 30px;
+}
+
+/* ── Chart Card ── */
+.card {
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px 20px 16px;
+}
+.card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+.card-subtitle {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+}
+
+/* ── SVG Charts ── */
+.viz-root text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+.chart-area { width: 100%; overflow: visible; }
+.bar-hover { cursor: pointer; }
+.bar-hover:hover rect.bar-fill { opacity: 0.82; }
+
+/* ── Tooltip ── */
+.tooltip {
+  position: fixed;
+  pointer-events: none;
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text-primary);
+  z-index: 100;
+  opacity: 0;
+  transition: opacity 0.1s;
+  max-width: 220px;
+}
+.tooltip.visible { opacity: 1; }
+.tooltip-title { font-weight: 600; margin-bottom: 3px; font-size: 12px; }
+.tooltip-row { display: flex; justify-content: space-between; gap: 16px; }
+.tooltip-val { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* ── Legend ── */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 12px;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.legend-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.legend-rect {
+  width: 14px; height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* ── Alert banner ── */
+.alert-banner {
+  background: color-mix(in srgb, var(--kpi-alert) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--kpi-alert) 30%, transparent);
+  border-radius: 8px;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-primary);
+  margin-bottom: 0;
+}
+.alert-icon { font-size: 16px; flex-shrink: 0; }
+.alert-text strong { color: var(--kpi-alert); }
+
+/* ── Table view ── */
+.tbl-wrap { overflow-x: auto; margin-top: 12px; }
+table.data-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.data-tbl th {
+  text-align: left;
+  padding: 6px 10px;
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--grid);
+}
+.data-tbl td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--grid);
+  color: var(--text-secondary);
+}
+.data-tbl tr:last-child td { border-bottom: none; }
+.data-tbl tr:hover td { background: var(--surface-card2); }
+</style>
+</head>
+<body>
+
+<div class="tooltip" id="tt"></div>
+
+<!-- Header -->
+<header class="header">
+  <div class="header-left">
+    <div>
+      <div class="brand">
+        <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+          <rect width="22" height="22" rx="6" fill="#FF6B00"/>
+          <path d="M6 8h10M6 11h7M6 14h5" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+        Talabat Branches — POD Invoice Dashboard
+      </div>
+      <div class="subtitle">Proof of Delivery · Shipment Intelligence</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <span class="badge" id="dateRange">Jul 01 – Jul 17, 2026</span>
+    <button class="theme-btn" onclick="toggleTheme()">Toggle Dark</button>
+  </div>
+</header>
+
+<main class="main">
+
+<!-- KPI Row -->
+<div class="section-label">Key Performance Indicators</div>
+<div class="grid-kpis" id="kpi-row"></div>
+
+<!-- Alert -->
+<div style="margin-top:14px;" id="alert-area"></div>
+
+<!-- Row 1: Daily trend + 3PL breakdown -->
+<div class="section-label">Delivery Volume & Logistics</div>
+<div class="grid-2">
+  <div class="card">
+    <div class="card-title">Daily POD Volume</div>
+    <div class="card-subtitle">Unique shipments per day — Jul 1–17</div>
+    <svg id="line-chart" class="chart-area"></svg>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:var(--c1)"></div>PODs per day</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">3PL Breakdown</div>
+    <div class="card-subtitle">Item lines by logistics provider</div>
+    <svg id="donut-3pl" class="chart-area"></svg>
+    <div class="legend" id="legend-3pl"></div>
+  </div>
+</div>
+
+<!-- Row 2: Review status + Store qty -->
+<div class="section-label">Review Status & Store Performance</div>
+<div class="grid-2">
+  <div class="card">
+    <div class="card-title">Review Status</div>
+    <div class="card-subtitle">86.3% of item lines are pending review</div>
+    <svg id="donut-review" class="chart-area"></svg>
+    <div class="legend" id="legend-review"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Top 10 Stores by Remaining Qty</div>
+    <div class="card-subtitle">Total units remaining per store</div>
+    <svg id="bar-stores" class="chart-area"></svg>
+  </div>
+</div>
+
+<!-- Row 3: Top items + Submitter -->
+<div class="section-label">Product & Team Insights</div>
+<div class="grid-2">
+  <div class="card">
+    <div class="card-title">Top 10 Items by Remaining Qty</div>
+    <div class="card-subtitle">Chocolate/wafer products dominate inventory</div>
+    <svg id="bar-items" class="chart-area"></svg>
+  </div>
+  <div class="card">
+    <div class="card-title">Submitter Workload</div>
+    <div class="card-subtitle">Item lines submitted per team member</div>
+    <svg id="bar-submitter" class="chart-area"></svg>
+  </div>
+</div>
+
+<!-- Row 4: Complexity + Chocolate flag -->
+<div class="section-label">Shipment Complexity & Chocolate Flag</div>
+<div class="grid-2">
+  <div class="card">
+    <div class="card-title">POD Complexity Distribution</div>
+    <div class="card-subtitle">Items per POD — most shipments have 3–10 items</div>
+    <svg id="bar-complexity" class="chart-area"></svg>
+  </div>
+  <div class="card">
+    <div class="card-title">Chocolate-Flagged Inventory by Store</div>
+    <div class="card-subtitle">352 items across 56 stores flagged with chocolate/damage comments</div>
+    <svg id="bar-choco" class="chart-area"></svg>
+  </div>
+</div>
+
+<!-- Data Tables -->
+<div class="section-label">Data Tables</div>
+<div class="grid-2">
+  <div class="card">
+    <div class="card-title">Store Performance</div>
+    <div class="tbl-wrap">
+      <table class="data-tbl" id="tbl-stores"></table>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">3PL Summary</div>
+    <div class="tbl-wrap">
+      <table class="data-tbl" id="tbl-3pl"></table>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<script>
+// ── DATA ──
+const DATA = {"daily_pods":[{"date":"2026-07-01","pods":56},{"date":"2026-07-02","pods":93},{"date":"2026-07-03","pods":37},{"date":"2026-07-04","pods":89},{"date":"2026-07-05","pods":134},{"date":"2026-07-06","pods":82},{"date":"2026-07-07","pods":104},{"date":"2026-07-08","pods":76},{"date":"2026-07-09","pods":84},{"date":"2026-07-10","pods":56},{"date":"2026-07-11","pods":55},{"date":"2026-07-12","pods":96},{"date":"2026-07-13","pods":99},{"date":"2026-07-14","pods":84},{"date":"2026-07-15","pods":96},{"date":"2026-07-16","pods":76},{"date":"2026-07-17","pods":35}],"tpl":[{"3PL":"Logistaway","items":3412,"qty":38987},{"3PL":"NAQLA","items":665,"qty":5746},{"3PL":"QC Warehouse Review","items":26,"qty":47},{"3PL":"Trella","items":4872,"qty":62616}],"review":[{"label":"Not Reviewed","count":7744},{"label":"Warehouse QC","count":790},{"label":"3PL","count":441}],"store_qty":[{"store":"Nasr City-DS 8","qty":3712,"pods":16},{"store":"Alex (Wingat) DS 41","qty":3651,"pods":16},{"store":"Shoubra-DS 28","qty":2871,"pods":20},{"store":"Port said-DS 32","qty":2837,"pods":22},{"store":"Helwan-DS 14","qty":2733,"pods":19},{"store":"Sheraton DS 52","qty":2612,"pods":17},{"store":"Mokatam hadaba DS 46","qty":2535,"pods":19},{"store":"October Festival City_DS_58","qty":2412,"pods":22},{"store":"Lebanon Square-DS 5","qty":2369,"pods":21},{"store":"October industrial DS 47","qty":2268,"pods":24}],"top_items":[{"item":"Freska Choco Square Hazelnut Wafer, 41g","qty":10272},{"item":"Edita Todo Brownies Cake 55 g","qty":6816},{"item":"Freska Square Hazelnut Wafer, 24.3g","qty":6561},{"item":"McVitie'S Digestive Milk Chocolate Biscu","qty":4162},{"item":"Freska Coated Sticks 4 Pcs","qty":2872},{"item":"Freska Fingers Uncoated Hazelnut 10 Pcs","qty":2316},{"item":"Freska Fingers White Hazel 10 Pcs","qty":1930},{"item":"Kinder Bueno Bar, 10 Pieces","qty":1491},{"item":"Freska Chocolate Choco Bar, 2 Pieces, 39","qty":1450},{"item":"Alpella Chocolate Flavor Wafer with Haze","qty":1104}],"submitter":[{"name":"alaaeldin.fouad","items":5041},{"name":"abdallah.elagamy","items":2788},{"name":"kareem.mostafa","items":704},{"name":"mahmoud.emad","items":319},{"name":"abdelrahman.mohamed.2","items":66},{"name":"ahmed.sayed.5","items":57}],"complexity":[{"bucket":"1","count":148},{"bucket":"2","count":146},{"bucket":"3-5","count":440},{"bucket":"6-10","count":363},{"bucket":"11-20","count":221},{"bucket":"21+","count":34}],"choco_store":[{"store":"Alex (Wingat) DS 41","items":19,"qty":1429},{"store":"Shoubra-DS 28","items":15,"qty":1264},{"store":"Sheraton DS 52","items":14,"qty":1008},{"store":"First Mall-DS 19","items":12,"qty":868},{"store":"Madinty-DS 23","items":11,"qty":866},{"store":"Obour-DS 30","items":9,"qty":802},{"store":"Nasr City-DS 8","items":15,"qty":754},{"store":"Obour Industrial Area_DS_57","items":7,"qty":663},{"store":"October Festival City_DS_58","items":14,"qty":629},{"store":"Alex (Ibrahimya)-DS 27","items":17,"qty":561},{"store":"Ain-shams-DS 31","items":5,"qty":556},{"store":"Mansoura gomhoreya-DS 48","items":5,"qty":544}],"kpis":{"total_pods":1352,"total_items":8975,"total_qty":107396,"review_rate":13.7,"unreviewed":7744,"active_stores":74,"date_range":"Jul 01 – Jul 17, 2026"}};
+
+// ── UTILS ──
+const fmt = n => n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(1)+'K' : n.toLocaleString();
+const fmtFull = n => n.toLocaleString();
+const COLORS = ['var(--c1)','var(--c2)','var(--c3)','var(--c4)','var(--c5)','var(--c6)','var(--c7)','var(--c8)'];
+
+const tt = document.getElementById('tt');
+function showTT(html, e) {
+  tt.innerHTML = html;
+  tt.classList.add('visible');
+  moveTT(e);
+}
+function moveTT(e) {
+  const x = e.clientX + 14;
+  const y = e.clientY - 10;
+  tt.style.left = Math.min(x, window.innerWidth - 230) + 'px';
+  tt.style.top = Math.max(10, y) + 'px';
+}
+function hideTT() { tt.classList.remove('visible'); }
+
+// ── KPIs ──
+function renderKPIs() {
+  const k = DATA.kpis;
+  const tiles = [
+    { label: 'Total PODs', value: fmtFull(k.total_pods), sub: k.date_range, icon: '📦', alert: false },
+    { label: 'Total Item Lines', value: fmtFull(k.total_items), sub: 'Across all shipments', icon: '📋', alert: false },
+    { label: 'Total Remaining Qty', value: fmt(k.total_qty), sub: 'Units in inventory', icon: '🗃️', alert: false },
+    { label: 'Review Rate', value: k.review_rate + '%', sub: 'Only 1,231 items reviewed', icon: '✅', alert: true },
+    { label: 'Unreviewed Items', value: fmtFull(k.unreviewed), sub: '86.3% of all items', icon: '⚠️', alert: true },
+    { label: 'Active Stores', value: k.active_stores, sub: 'Branches covered', icon: '🏪', alert: false },
+  ];
+  document.getElementById('kpi-row').innerHTML = tiles.map(t => `
+    <div class="kpi ${t.alert ? 'alert' : ''}">
+      <div class="kpi-icon">${t.icon}</div>
+      <div class="kpi-label">${t.label}</div>
+      <div class="kpi-value">${t.value}</div>
+      <div class="kpi-sub">${t.sub}</div>
+    </div>`).join('');
+
+  document.getElementById('alert-area').innerHTML = `
+    <div class="alert-banner">
+      <span class="alert-icon">⚠️</span>
+      <span class="alert-text"><strong>Review Backlog Alert:</strong> 7,744 of 8,975 item lines (86.3%) have not been reviewed. Only Warehouse QC (790) and 3PL (441) have reviewed items. Immediate attention required.</span>
+    </div>`;
+}
+
+// ── LINE CHART: Daily PODs ──
+function renderLine() {
+  const el = document.getElementById('line-chart');
+  const W = el.parentElement.clientWidth - 40;
+  const H = 200;
+  const mL = 40, mR = 16, mT = 10, mB = 36;
+  const iW = W - mL - mR, iH = H - mT - mB;
+  const d = DATA.daily_pods;
+  const maxV = Math.max(...d.map(r => r.pods));
+  const xScale = i => mL + (i / (d.length - 1)) * iW;
+  const yScale = v => mT + iH - (v / (maxV * 1.1)) * iH;
+
+  const gridVals = [0, 40, 80, 120];
+  let grids = gridVals.map(v => `
+    <line x1="${mL}" y1="${yScale(v)}" x2="${mL+iW}" y2="${yScale(v)}" stroke="var(--grid)" stroke-width="1"/>
+    <text x="${mL - 6}" y="${yScale(v) + 4}" text-anchor="end" font-size="10" fill="var(--text-muted)" font-variant-numeric="tabular-nums">${v}</text>`).join('');
+
+  const pts = d.map((r,i) => `${xScale(i)},${yScale(r.pods)}`).join(' ');
+  const areaBot = yScale(0);
+  const areaPts = `${xScale(0)},${areaBot} ` + d.map((r,i)=>`${xScale(i)},${yScale(r.pods)}`).join(' ') + ` ${xScale(d.length-1)},${areaBot}`;
+
+  // x labels every 4 days
+  let xLabels = d.filter((_,i) => i % 4 === 0 || i === d.length-1).map((r,_,arr) => {
+    const i = d.indexOf(r);
+    const label = r.date.slice(5); // MM-DD
+    return `<text x="${xScale(i)}" y="${H - 6}" text-anchor="middle" font-size="10" fill="var(--text-muted)">${label}</text>`;
+  }).join('');
+
+  // interactive dots
+  const dots = d.map((r,i) => `
+    <circle class="dot" cx="${xScale(i)}" cy="${yScale(r.pods)}" r="5" fill="var(--c1)" stroke="var(--surface-card)" stroke-width="2"
+      data-date="${r.date}" data-pods="${r.pods}"
+      onmouseenter="showTT('<div class=tooltip-title>${r.date}</div><div class=tooltip-row><span>PODs</span><span class=tooltip-val>${r.pods}</span></div>', event)"
+      onmousemove="moveTT(event)"
+      onmouseleave="hideTT()" style="cursor:pointer"/>`).join('');
+
+  el.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  el.setAttribute('height', H);
+  el.innerHTML = `
+    ${grids}
+    <line x1="${mL}" y1="${mT}" x2="${mL}" y2="${mT+iH}" stroke="var(--axis)" stroke-width="1"/>
+    <polygon points="${areaPts}" fill="var(--c1)" opacity="0.10"/>
+    <polyline points="${pts}" fill="none" stroke="var(--c1)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    ${dots}
+    ${xLabels}`;
+}
+
+// ── DONUT CHART ──
+function renderDonut(svgId, data, labelKey, valKey, legendId, title) {
+  const el = document.getElementById(svgId);
+  const size = Math.min(el.parentElement.clientWidth - 40, 220);
+  const cx = size/2, cy = size/2, r = size * 0.38, inner = size * 0.22;
+  const total = data.reduce((s,d) => s + Number(d[valKey]), 0);
+  let angle = -Math.PI/2;
+  const slices = data.map((d,i) => {
+    const sweep = (Number(d[valKey]) / total) * 2 * Math.PI;
+    const x1 = cx + r * Math.cos(angle), y1 = cy + r * Math.sin(angle);
+    angle += sweep;
+    const x2 = cx + r * Math.cos(angle), y2 = cy + r * Math.sin(angle);
+    const large = sweep > Math.PI ? 1 : 0;
+    const xi1 = cx + inner * Math.cos(angle - sweep), yi1 = cy + inner * Math.sin(angle - sweep);
+    const xi2 = cx + inner * Math.cos(angle), yi2 = cy + inner * Math.sin(angle);
+    const pct = Math.round(Number(d[valKey])/total*100);
+    return { path: `M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} L ${xi2} ${yi2} A ${inner} ${inner} 0 ${large} 0 ${xi1} ${yi1} Z`,
+      color: COLORS[i], label: d[labelKey], val: d[valKey], pct };
+  });
+
+  el.setAttribute('viewBox', `0 0 ${size} ${size}`);
+  el.setAttribute('height', size);
+  el.innerHTML = slices.map(s => `
+    <path d="${s.path}" fill="${s.color}" stroke="var(--surface-card)" stroke-width="2"
+      onmouseenter="showTT('<div class=tooltip-title>${s.label}</div><div class=tooltip-row><span>Count</span><span class=tooltip-val>${fmtFull(s.val)}</span></div><div class=tooltip-row><span>Share</span><span class=tooltip-val>${s.pct}%</span></div>', event)"
+      onmousemove="moveTT(event)" onmouseleave="hideTT()" style="cursor:pointer"/>`)
+    .join('')
+    + `<text x="${cx}" y="${cy-6}" text-anchor="middle" font-size="13" font-weight="700" fill="var(--text-primary)">${fmt(total)}</text>
+       <text x="${cx}" y="${cy+12}" text-anchor="middle" font-size="10" fill="var(--text-muted)">total</text>`;
+
+  if (legendId) {
+    document.getElementById(legendId).innerHTML = slices.map(s =>
+      `<div class="legend-item"><div class="legend-dot" style="background:${s.color}"></div>${s.label} <span style="color:var(--text-muted);margin-left:4px">${s.pct}%</span></div>`
+    ).join('');
+  }
+}
+
+// ── HORIZONTAL BAR ──
+function renderHBar(svgId, data, labelKey, valKey, color, tooltipExtra) {
+  const el = document.getElementById(svgId);
+  const W = el.parentElement.clientWidth - 40;
+  const barH = 22, gap = 6, mL = 160, mR = 60, mT = 4, mB = 4;
+  const H = mT + data.length * (barH + gap) - gap + mB;
+  const maxV = Math.max(...data.map(d => d[valKey]));
+
+  const bars = data.map((d,i) => {
+    const y = mT + i * (barH + gap);
+    const bW = Math.max(2, (d[valKey] / maxV) * (W - mL - mR));
+    const label = d[labelKey].length > 22 ? d[labelKey].slice(0,22)+'…' : d[labelKey];
+    const extra = tooltipExtra ? tooltipExtra(d) : '';
+    return `<g class="bar-hover"
+      onmouseenter="showTT('<div class=tooltip-title>${d[labelKey]}</div><div class=tooltip-row><span>${valKey}</span><span class=tooltip-val>${fmtFull(d[valKey])}</span></div>${extra}', event)"
+      onmousemove="moveTT(event)" onmouseleave="hideTT()">
+      <rect x="${mL}" y="${y}" width="${bW}" height="${barH}" rx="4" class="bar-fill" fill="${color || 'var(--c1)'}"/>
+      <text x="${mL - 6}" y="${y + barH/2 + 4}" text-anchor="end" font-size="11" fill="var(--text-secondary)">${label}</text>
+      <text x="${mL + bW + 5}" y="${y + barH/2 + 4}" font-size="11" fill="var(--text-muted)" font-variant-numeric="tabular-nums">${fmt(d[valKey])}</text>
+    </g>`;
+  }).join('');
+
+  el.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  el.setAttribute('height', H);
+  el.innerHTML = bars;
+}
+
+// ── COLUMN BAR (complexity) ──
+function renderVBar(svgId, data, labelKey, valKey, color) {
+  const el = document.getElementById(svgId);
+  const W = el.parentElement.clientWidth - 40;
+  const H = 180, mL = 36, mR = 8, mT = 10, mB = 28;
+  const iW = W - mL - mR, iH = H - mT - mB;
+  const n = data.length;
+  const maxV = Math.max(...data.map(d => d[valKey]));
+  const bW = Math.max(20, (iW / n) * 0.6);
+  const slot = iW / n;
+
+  const gridVals = [0, 100, 200, 300, 400];
+  const grids = gridVals.filter(v => v <= maxV * 1.1).map(v => {
+    const y = mT + iH - (v / (maxV * 1.15)) * iH;
+    return `<line x1="${mL}" y1="${y}" x2="${mL+iW}" y2="${y}" stroke="var(--grid)" stroke-width="1"/>
+      <text x="${mL-4}" y="${y+4}" text-anchor="end" font-size="10" fill="var(--text-muted)">${v}</text>`;
+  }).join('');
+
+  const bars = data.map((d,i) => {
+    const bH = Math.max(2, (d[valKey] / (maxV * 1.15)) * iH);
+    const x = mL + slot * i + (slot - bW) / 2;
+    const y = mT + iH - bH;
+    return `<g onmouseenter="showTT('<div class=tooltip-title>${d[labelKey]} items/POD</div><div class=tooltip-row><span>PODs</span><span class=tooltip-val>${d[valKey]}</span></div>', event)"
+      onmousemove="moveTT(event)" onmouseleave="hideTT()" style="cursor:pointer">
+      <rect x="${x}" y="${y}" width="${bW}" height="${bH}" rx="4" fill="${color || 'var(--c1)'}"/>
+      <text x="${x + bW/2}" y="${H - mB + 14}" text-anchor="middle" font-size="11" fill="var(--text-muted)">${d[labelKey]}</text>
+      <text x="${x + bW/2}" y="${y - 4}" text-anchor="middle" font-size="10" fill="var(--text-secondary)">${d[valKey]}</text>
+    </g>`;
+  }).join('');
+
+  el.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  el.setAttribute('height', H);
+  el.innerHTML = grids + bars + `<line x1="${mL}" y1="${mT+iH}" x2="${mL+iW}" y2="${mT+iH}" stroke="var(--axis)" stroke-width="1"/>`;
+}
+
+// ── DATA TABLES ──
+function renderTable(tableId, data, cols) {
+  const el = document.getElementById(tableId);
+  el.innerHTML = `<thead><tr>${cols.map(c=>`<th>${c.label}</th>`).join('')}</tr></thead>
+    <tbody>${data.map(row => `<tr>${cols.map(c=>`<td>${c.fmt ? c.fmt(row[c.key]) : row[c.key]}</td>`).join('')}</tr>`).join('')}</tbody>`;
+}
+
+// ── THEME TOGGLE ──
+function toggleTheme() {
+  const cur = document.documentElement.getAttribute('data-theme');
+  document.documentElement.setAttribute('data-theme', cur === 'dark' ? 'light' : 'dark');
+}
+
+// ── INIT ──
+function init() {
+  renderKPIs();
+  renderLine();
+  renderDonut('donut-3pl', DATA.tpl, '3PL', 'items', 'legend-3pl', '3PL');
+  renderDonut('donut-review', DATA.review, 'label', 'count', 'legend-review', 'Review');
+  renderHBar('bar-stores', DATA.store_qty, 'store', 'qty', 'var(--c1)',
+    d => `<div class=tooltip-row><span>PODs</span><span class=tooltip-val>${d.pods}</span></div>`);
+  renderHBar('bar-items', DATA.top_items, 'item', 'qty', 'var(--c5)');
+  renderHBar('bar-submitter', DATA.submitter, 'name', 'items', 'var(--c4)');
+  renderVBar('bar-complexity', DATA.complexity, 'bucket', 'count', 'var(--c7)');
+  renderHBar('bar-choco', DATA.choco_store, 'store', 'qty', 'var(--c8)',
+    d => `<div class=tooltip-row><span>Flagged items</span><span class=tooltip-val>${d.items}</span></div>`);
+
+  renderTable('tbl-stores', DATA.store_qty, [
+    { key: 'store', label: 'Store' },
+    { key: 'qty', label: 'Remaining Qty', fmt: fmtFull },
+    { key: 'pods', label: 'PODs' },
+  ]);
+  renderTable('tbl-3pl', DATA.tpl, [
+    { key: '3PL', label: '3PL Provider' },
+    { key: 'items', label: 'Item Lines', fmt: fmtFull },
+    { key: 'qty', label: 'Total Qty', fmt: fmtFull },
+  ]);
+}
+
+window.addEventListener('load', init);
+window.addEventListener('resize', init);
+</script>
+</body>
+</html>
