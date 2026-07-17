@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Warehouse QC Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <?!= include('Dashboard_CSS') ?>
+</head>
+<body>
+
+<div id="app" class="app">
+
+  <!-- ═══ SIDEBAR ═══ -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-top">
+      <div class="sidebar-logo">
+        <div class="logo-icon">
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+            <rect width="22" height="22" rx="6" fill="#FF6B00"/>
+            <path d="M6 8h10M6 11h7M6 14h5" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="logo-text">
+          <div class="logo-brand">talabat</div>
+          <div class="logo-sub">Warehouse QC</div>
+        </div>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">MAIN</div>
+      <a class="nav-item active" data-section="kpis" onclick="navTo('kpis',this)">
+        <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor"><path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"/></svg>
+        <span class="nav-label">Overview</span>
+      </a>
+      <a class="nav-item" data-section="trend" onclick="navTo('trend',this)">
+        <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12 7a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0V8.414l-4.293 4.293a1 1 0 01-1.414 0L8 10.414l-4.293 4.293a1 1 0 01-1.414-1.414l5-5a1 1 0 011.414 0L11 10.586 14.586 7H12z" clip-rule="evenodd"/></svg>
+        <span class="nav-label">Daily Trend</span>
+      </a>
+      <div class="nav-section-label">ANALYTICS</div>
+      <a class="nav-item" data-section="stores" onclick="navTo('stores',this)">
+        <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor"><path d="M4 4a2 2 0 00-2 2v1h16V6a2 2 0 00-2-2H4z"/><path fill-rule="evenodd" d="M18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm5-1a1 1 0 100 2h1a1 1 0 100-2H9z" clip-rule="evenodd"/></svg>
+        <span class="nav-label">Stores</span>
+      </a>
+      <a class="nav-item" data-section="items" onclick="navTo('items',this)">
+        <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 2a4 4 0 00-4 4v1H5a1 1 0 00-.994.89l-1 9A1 1 0 004 18h12a1 1 0 00.994-1.11l-1-9A1 1 0 0015 7h-1V6a4 4 0 00-4-4zm2 5V6a2 2 0 10-4 0v1h4zm-6 3a1 1 0 112 0 1 1 0 01-2 0zm7-1a1 1 0 100 2 1 1 0 000-2z" clip-rule="evenodd"/></svg>
+        <span class="nav-label">Items</span>
+      </a>
+      <a class="nav-item" data-section="logistics" onclick="navTo('logistics',this)">
+        <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor"><path d="M8 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM15 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z"/><path d="M3 4a1 1 0 00-1 1v10a1 1 0 001 1h1.05a2.5 2.5 0 014.9 0H10a1 1 0 001-1V5a1 1 0 00-1-1H3zM14 7a1 1 0 00-1 1v6.05A2.5 2.5 0 0115.95 16H17a1 1 0 001-1v-5a1 1 0 00-.293-.707l-2-2A1 1 0 0015 7h-1z"/></svg>
+        <span class="nav-label">Logistics</span>
+      </a>
+      <a class="nav-item" data-section="team" onclick="navTo('team',this)">
+        <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/></svg>
+        <span class="nav-label">Team</span>
+      </a>
+      <div class="nav-section-label">OPERATIONS</div>
+      <a class="nav-item" data-section="activity" onclick="navTo('activity',this)">
+        <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h4a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"/></svg>
+        <span class="nav-label">Activity</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="refresh-info" id="refreshInfo">
+        <span class="refresh-dot live"></span>
+        <span id="lastRefreshText">Loading…</span>
+      </div>
+      <button class="sidebar-refresh-btn" onclick="loadData()" title="Refresh">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M12 7A5 5 0 112 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M12 2.5V7h-4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ═══ MAIN WRAPPER ═══ -->
+  <div class="main-wrapper" id="mainWrapper">
+
+    <!-- Top Bar -->
+    <header class="topbar" id="topbar">
+      <div class="topbar-left">
+        <button class="hamburger" onclick="toggleSidebar()" title="Toggle sidebar">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M3 5h12M3 9h12M3 13h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+        <div class="topbar-title-block">
+          <h1 class="topbar-title" id="topbarTitle">Overview</h1>
+          <span class="topbar-sub" id="topbarSub">Real-time warehouse operations intelligence</span>
+        </div>
+      </div>
+
+      <div class="topbar-filters" id="filterBar">
+
+        <!-- Date Range -->
+        <div class="fg" id="fg-date">
+          <button class="filter-btn" id="fb-date" onclick="toggleFilter('date',event)">
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x=".75" y="1.75" width="11.5" height="10.5" rx="1.75" stroke="currentColor" stroke-width="1.2"/><path d="M4 .75v2M9 .75v2M.75 5.25h11.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+            <span id="flbl-date">All Dates</span>
+            <svg class="chevron" width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M2.5 4l3 3 3-3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+          </button>
+          <div class="filter-panel" id="fp-date">
+            <div class="date-presets">
+              <button onclick="setDatePreset(0)" class="preset-btn active" id="pr-all">All Time</button>
+              <button onclick="setDatePreset(1)" class="preset-btn" id="pr-1">Today</button>
+              <button onclick="setDatePreset(7)" class="preset-btn" id="pr-7">Last 7d</button>
+              <button onclick="setDatePreset(30)" class="preset-btn" id="pr-30">Last 30d</button>
+            </div>
+            <div class="date-range-inputs">
+              <label class="date-label">From<input type="date" id="dateFrom" onchange="applyDateFilter()"></label>
+              <label class="date-label">To<input type="date" id="dateTo" onchange="applyDateFilter()"></label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Store -->
+        <div class="fg" id="fg-store">
+          <button class="filter-btn" id="fb-store" onclick="toggleFilter('store',event)">
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="currentColor"><path d="M2 3h9l1.5 4H.5L2 3z" opacity=".7"/><path d="M.5 7h12v4.5a.5.5 0 01-.5.5H1a.5.5 0 01-.5-.5V7z"/></svg>
+            <span id="flbl-store">All Stores</span>
+            <span class="filter-count" id="fc-store" style="display:none"></span>
+            <svg class="chevron" width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M2.5 4l3 3 3-3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+          </button>
+          <div class="filter-panel wide-panel" id="fp-store">
+            <div class="fp-search"><input type="text" placeholder="Search stores…" oninput="searchOptions('store',this.value)"></div>
+            <div class="fp-actions"><button onclick="selectAll('store')">Select All</button><button onclick="clearFilter('store')">Clear</button></div>
+            <div class="fp-opts" id="fo-store"></div>
+          </div>
+        </div>
+
+        <!-- 3PL -->
+        <div class="fg" id="fg-tpl">
+          <button class="filter-btn" id="fb-tpl" onclick="toggleFilter('tpl',event)">
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="currentColor"><path d="M1.5 9.5L3 3.5h7l1.5 6H1.5z" opacity=".7"/><circle cx="4" cy="11" r="1.2"/><circle cx="9" cy="11" r="1.2"/></svg>
+            <span id="flbl-tpl">All 3PL</span>
+            <span class="filter-count" id="fc-tpl" style="display:none"></span>
+            <svg class="chevron" width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M2.5 4l3 3 3-3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+          </button>
+          <div class="filter-panel" id="fp-tpl">
+            <div class="fp-actions"><button onclick="selectAll('tpl')">Select All</button><button onclick="clearFilter('tpl')">Clear</button></div>
+            <div class="fp-opts" id="fo-tpl"></div>
+          </div>
+        </div>
+
+        <!-- User -->
+        <div class="fg" id="fg-user">
+          <button class="filter-btn" id="fb-user" onclick="toggleFilter('user',event)">
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="currentColor"><circle cx="6.5" cy="4.5" r="2.5" opacity=".8"/><path d="M1 12a5.5 5.5 0 0111 0" opacity=".7"/></svg>
+            <span id="flbl-user">All Users</span>
+            <span class="filter-count" id="fc-user" style="display:none"></span>
+            <svg class="chevron" width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M2.5 4l3 3 3-3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+          </button>
+          <div class="filter-panel" id="fp-user">
+            <div class="fp-actions"><button onclick="selectAll('user')">Select All</button><button onclick="clearFilter('user')">Clear</button></div>
+            <div class="fp-opts" id="fo-user"></div>
+          </div>
+        </div>
+
+        <!-- ST Number -->
+        <div class="fg" id="fg-stnum">
+          <button class="filter-btn" id="fb-stnum" onclick="toggleFilter('stnum',event)">
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x=".75" y=".75" width="11.5" height="11.5" rx="2" stroke="currentColor" stroke-width="1.2"/><path d="M4 4.5h5M4 6.5h5M4 8.5h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+            <span id="flbl-stnum">All ST#</span>
+            <span class="filter-count" id="fc-stnum" style="display:none"></span>
+            <svg class="chevron" width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M2.5 4l3 3 3-3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+          </button>
+          <div class="filter-panel" id="fp-stnum">
+            <div class="fp-search"><input type="text" placeholder="Search ST numbers…" oninput="searchOptions('stnum',this.value)"></div>
+            <div class="fp-actions"><button onclick="selectAll('stnum')">Select All</button><button onclick="clearFilter('stnum')">Clear</button></div>
+            <div class="fp-opts" id="fo-stnum"></div>
+          </div>
+        </div>
+
+        <!-- Reset -->
+        <button class="reset-btn" id="resetBtn" onclick="resetAllFilters()" style="display:none">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M11.5 6.5A5 5 0 111.5 6.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M11.5 1.5v5h-5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Reset
+        </button>
+      </div>
+
+      <div class="topbar-right">
+        <button class="icon-btn" title="Export CSV" onclick="exportCSV()">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1.5v9M4 7l4 4 4-4M2 13.5h12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Content Area -->
+    <main class="content" id="content">
+
+      <!-- Loading Skeleton -->
+      <div id="skeleton">
+        <div class="sk-kpi-row">
+          <div class="sk-box" style="height:96px"></div><div class="sk-box" style="height:96px"></div>
+          <div class="sk-box" style="height:96px"></div><div class="sk-box" style="height:96px"></div>
+          <div class="sk-box" style="height:96px"></div><div class="sk-box" style="height:96px"></div>
+          <div class="sk-box" style="height:96px"></div><div class="sk-box" style="height:96px"></div>
+        </div>
+        <div class="sk-chart-row">
+          <div class="sk-box" style="height:320px;grid-column:span 2"></div>
+          <div class="sk-box" style="height:320px"></div>
+        </div>
+        <div class="sk-chart-row">
+          <div class="sk-box" style="height:260px"></div>
+          <div class="sk-box" style="height:260px"></div>
+          <div class="sk-box" style="height:260px"></div>
+        </div>
+      </div>
+
+      <!-- Dashboard (hidden until data loads) -->
+      <div id="dashboard" style="display:none">
+
+        <!-- KPIs -->
+        <section id="sec-kpis" class="section">
+          <div class="kpi-grid" id="kpiGrid"></div>
+        </section>
+
+        <!-- Today Snapshot -->
+        <section id="sec-snapshot" class="section">
+          <div class="section-hdr">
+            <div class="section-pulse"></div>
+            <h2 class="section-title">Latest Day Snapshot</h2>
+            <span class="section-badge" id="snapshotDate"></span>
+          </div>
+          <div class="snapshot-grid" id="snapshotGrid"></div>
+        </section>
+
+        <!-- Daily Trend -->
+        <section id="sec-trend" class="section">
+          <div class="section-hdr">
+            <div class="section-bar"></div>
+            <h2 class="section-title">Daily Operations Trend</h2>
+            <div class="seg-ctrl">
+              <button class="seg-btn active" onclick="setTrendMode('daily',this)">Daily</button>
+              <button class="seg-btn" onclick="setTrendMode('weekly',this)">Weekly</button>
+            </div>
+          </div>
+          <div class="chart-card chart-card--tall">
+            <div class="chart-legend-row" id="trendLegend"></div>
+            <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+          </div>
+        </section>
+
+        <!-- Stores -->
+        <section id="sec-stores" class="section">
+          <div class="section-hdr">
+            <div class="section-bar"></div>
+            <h2 class="section-title">Store Performance</h2>
+            <span class="active-filter-chip" id="storeFilterChip" style="display:none"></span>
+          </div>
+          <div class="two-col">
+            <div class="chart-card">
+              <div class="chart-card-hdr"><span class="chart-card-title">Top Stores · PODs</span><span class="chart-tag" id="tagStorePods"></span></div>
+              <div class="chart-wrap"><canvas id="storePodsChart"></canvas></div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-card-hdr"><span class="chart-card-title">Top Stores · Quantity</span></div>
+              <div class="chart-wrap"><canvas id="storeQtyChart"></canvas></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Items -->
+        <section id="sec-items" class="section">
+          <div class="section-hdr">
+            <div class="section-bar"></div>
+            <h2 class="section-title">Item Analytics</h2>
+          </div>
+          <div class="two-col">
+            <div class="chart-card">
+              <div class="chart-card-hdr"><span class="chart-card-title">Top Items · Frequency</span></div>
+              <div class="chart-wrap"><canvas id="itemsFreqChart"></canvas></div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-card-hdr"><span class="chart-card-title">Top Items · Quantity</span></div>
+              <div class="chart-wrap"><canvas id="itemsQtyChart"></canvas></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Logistics -->
+        <section id="sec-logistics" class="section">
+          <div class="section-hdr">
+            <div class="section-bar"></div>
+            <h2 class="section-title">Logistics & QC Status</h2>
+          </div>
+          <div class="three-col">
+            <div class="chart-card">
+              <div class="chart-card-hdr"><span class="chart-card-title">3PL · POD Share</span></div>
+              <div class="donut-wrap"><canvas id="tplPodsChart"></canvas></div>
+              <div class="donut-legend" id="legendTplPods"></div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-card-hdr"><span class="chart-card-title">3PL · Qty Share</span></div>
+              <div class="donut-wrap"><canvas id="tplQtyChart"></canvas></div>
+              <div class="donut-legend" id="legendTplQty"></div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-card-hdr"><span class="chart-card-title">Review Status</span></div>
+              <div class="donut-wrap"><canvas id="reviewChart"></canvas></div>
+              <div class="donut-legend" id="legendReview"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Team -->
+        <section id="sec-team" class="section">
+          <div class="section-hdr">
+            <div class="section-bar"></div>
+            <h2 class="section-title">Team Performance</h2>
+          </div>
+          <div class="two-col">
+            <div class="chart-card">
+              <div class="chart-card-hdr"><span class="chart-card-title">Submissions by User</span></div>
+              <div class="chart-wrap"><canvas id="usersChart"></canvas></div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-card-hdr"><span class="chart-card-title">User Breakdown</span></div>
+              <div id="userDetailGrid" class="user-detail-grid"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Activity -->
+        <section id="sec-activity" class="section">
+          <div class="section-hdr">
+            <div class="section-bar"></div>
+            <h2 class="section-title">Recent Activity</h2>
+            <div class="activity-search">
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="5.5" cy="5.5" r="4" stroke="currentColor" stroke-width="1.2"/><path d="M9 9l3 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+              <input type="text" id="actSearch" placeholder="Search POD ID, store, ST…" oninput="filterActivity(this.value)">
+            </div>
+          </div>
+          <div class="chart-card no-pad">
+            <div class="act-table-wrap">
+              <table class="act-table">
+                <thead>
+                  <tr>
+                    <th class="sortable" onclick="sortAct('podId')">POD ID<span class="sort-arr" id="sort-podId"></span></th>
+                    <th class="sortable" onclick="sortAct('date')">Date<span class="sort-arr" id="sort-date"></span></th>
+                    <th class="sortable" onclick="sortAct('store')">Store<span class="sort-arr" id="sort-store"></span></th>
+                    <th class="sortable" onclick="sortAct('stNumber')">ST Number<span class="sort-arr" id="sort-stNumber"></span></th>
+                    <th class="sortable" onclick="sortAct('tpl')">3PL<span class="sort-arr" id="sort-tpl"></span></th>
+                    <th class="sortable" onclick="sortAct('qty')">Qty<span class="sort-arr" id="sort-qty"></span></th>
+                    <th class="sortable" onclick="sortAct('items')">Items<span class="sort-arr" id="sort-items"></span></th>
+                    <th class="sortable" onclick="sortAct('user')">Submitted By<span class="sort-arr" id="sort-user"></span></th>
+                    <th>Review</th>
+                  </tr>
+                </thead>
+                <tbody id="actBody"></tbody>
+              </table>
+              <div class="empty-state" id="actEmpty" style="display:none">
+                <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><rect x="5" y="8" width="30" height="26" rx="3" stroke="#CBD5E1" stroke-width="2"/><path d="M12 16h16M12 21h10M12 26h7" stroke="#CBD5E1" stroke-width="1.5" stroke-linecap="round"/></svg>
+                <p>No matching records found</p>
+              </div>
+            </div>
+            <div class="act-footer">
+              <span id="actCount"></span>
+              <div id="actPagination" class="pagination"></div>
+            </div>
+          </div>
+        </section>
+
+      </div><!-- /dashboard -->
+    </main>
+  </div><!-- /main-wrapper -->
+</div><!-- /app -->
+
+<!-- Filter backdrop -->
+<div id="filterBackdrop" class="filter-backdrop" onclick="closeAllFilters()" style="display:none"></div>
+
+<!-- POD Detail Drawer -->
+<div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
+<aside class="drawer" id="drawer">
+  <div class="drawer-hdr">
+    <div class="drawer-hdr-info">
+      <div class="drawer-title" id="drawerTitle">POD Details</div>
+      <div class="drawer-sub" id="drawerSub"></div>
+    </div>
+    <button class="drawer-close" onclick="closeDrawer()">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+  <div class="drawer-body" id="drawerBody"></div>
+</aside>
+
+<?!= include('Dashboard_JS') ?>
+</body>
+</html>

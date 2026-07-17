@@ -1,0 +1,1126 @@
+<script>
+// ═══════════════════════════════════════════════════════════════════
+//  Talabat Warehouse QC Dashboard — Frontend Engine (Dashboard_JS)
+// ═══════════════════════════════════════════════════════════════════
+
+/* ── Chart.js global defaults ──────────────────────────────────── */
+Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
+Chart.defaults.color = '#94A3B8';
+Chart.defaults.borderColor = '#F1F5F9';
+
+/* ── Color Palette ─────────────────────────────────────────────── */
+const PALETTE = {
+  orange: '#FF6B00', blue: '#3B82F6', green: '#10B981',
+  purple: '#8B5CF6', teal: '#06B6D4', yellow: '#F59E0B',
+  rose: '#F43F5E',   indigo:'#6366F1',
+  series: ['#3B82F6','#10B981','#F59E0B','#8B5CF6','#06B6D4','#F43F5E','#6366F1','#FF6B00'],
+  tpl: { 'Trella':'#3B82F6', 'Logistaway':'#10B981', 'NAQLA':'#F59E0B', 'QC Warehouse Review':'#8B5CF6' },
+};
+
+/* ═══════════════════════════════════════════════════════════════
+   APP STATE
+   ═══════════════════════════════════════════════════════════════ */
+const AppState = {
+  raw: [],                 // all rows from backend
+  filterOptions: {},       // { store: Set, tpl: Set, user: Set, stnum: Set }
+  filters: {
+    dateFrom: null, dateTo: null,
+    stores: new Set(), tpls: new Set(), users: new Set(), stnums: new Set(),
+  },
+  charts: {},             // Chart.js instances keyed by id
+  trendMode: 'daily',
+  actPage: 1, actPageSize: 20,
+  actSort: { key: 'date', dir: -1 },
+  actSearch: '',
+  actRows: [],            // POD-level rows for table
+  openFilters: new Set(),
+
+  getFiltered() {
+    const f = this.filters;
+    const hasDateFrom = f.dateFrom != null;
+    const hasDateTo   = f.dateTo   != null;
+    const hasStores   = f.stores.size > 0;
+    const hasTpls     = f.tpls.size > 0;
+    const hasUsers    = f.users.size > 0;
+    const hasStnums   = f.stnums.size > 0;
+    return this.raw.filter(r => {
+      if (hasDateFrom && r[1] < f.dateFrom) return false;
+      if (hasDateTo   && r[1] > f.dateTo)   return false;
+      if (hasStores   && !f.stores.has(r[3])) return false;
+      if (hasTpls     && !f.tpls.has(r[4]))   return false;
+      if (hasUsers    && !f.users.has(r[2]))   return false;
+      if (hasStnums   && !f.stnums.has(r[5]))  return false;
+      return true;
+    });
+  },
+
+  hasActiveFilters() {
+    const f = this.filters;
+    return f.dateFrom || f.dateTo ||
+      f.stores.size > 0 || f.tpls.size > 0 || f.users.size > 0 || f.stnums.size > 0;
+  }
+};
+
+/* ═══════════════════════════════════════════════════════════════
+   DATA ENGINE — pure aggregation functions
+   ═══════════════════════════════════════════════════════════════ */
+const DataEngine = {
+
+  aggregate(rows) {
+    const pods     = new Map();   // podId → { store, tpl, stNumber, user, date, qty, items[], reviewedBy }
+    const dailyP   = new Map();   // date  → Set<podId>
+    const dailyQ   = new Map();   // date  → qty
+    const storeP   = new Map();   // store → Set<podId>
+    const storeQ   = new Map();   // store → qty
+    const itemFreq = new Map();   // desc  → count
+    const itemQ    = new Map();   // desc  → qty
+    const tplP     = new Map();   // 3PL   → Set<podId>
+    const tplQ     = new Map();   // 3PL   → qty
+    const userP    = new Map();   // user  → Set<podId>
+    let revWH = 0, revTPL = 0, revNone = 0;
+
+    for (const r of rows) {
+      const [podId, date, user, store, tpl, stNum, itemNum, desc, qty, reviewed] = r;
+      if (!podId) continue;
+
+      // POD accumulation
+      if (!pods.has(podId)) {
+        pods.set(podId, { store, tpl, stNumber: stNum, user, date, qty: 0, items: [], reviewedBy: reviewed });
+      }
+      const pod = pods.get(podId);
+      pod.qty += qty;
+      pod.items.push({ itemNum, desc: desc || itemNum, qty });
+
+      // Daily
+      if (!dailyP.has(date)) dailyP.set(date, new Set());
+      dailyP.get(date).add(podId);
+      dailyQ.set(date, (dailyQ.get(date) || 0) + qty);
+
+      // Store
+      if (!storeP.has(store)) storeP.set(store, new Set());
+      storeP.get(store).add(podId);
+      storeQ.set(store, (storeQ.get(store) || 0) + qty);
+
+      // Items
+      const key = desc || itemNum || '(unknown)';
+      itemFreq.set(key, (itemFreq.get(key) || 0) + 1);
+      itemQ.set(key, (itemQ.get(key) || 0) + qty);
+
+      // 3PL
+      if (!tplP.has(tpl)) tplP.set(tpl, new Set());
+      tplP.get(tpl).add(podId);
+      tplQ.set(tpl, (tplQ.get(tpl) || 0) + qty);
+
+      // User
+      if (!userP.has(user)) userP.set(user, new Set());
+      userP.get(user).add(podId);
+
+      // Review
+      if (reviewed === 'Warehouse QC') revWH++;
+      else if (reviewed === '3PL')      revTPL++;
+      else                              revNone++;
+    }
+
+    const totalPods = pods.size;
+    const totalQty  = rows.reduce((s, r) => s + r[8], 0);
+    const avgQty    = totalPods ? Math.round(totalQty / totalPods * 10) / 10 : 0;
+    const revRate   = rows.length ? +((revWH + revTPL) / rows.length * 100).toFixed(1) : 0;
+    const dates     = [...dailyP.keys()].sort();
+
+    const top = (map, getValue, n = 10) =>
+      [...map.entries()]
+        .map(([l, v]) => ({ label: l, value: getValue(v) }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, n);
+
+    // Latest day snapshot
+    const latestDate   = dates[dates.length - 1] || '';
+    const latestPodSet = dailyP.get(latestDate) || new Set();
+    const latestUsers  = new Set([...pods.values()]
+      .filter(p => p.date === latestDate).map(p => p.user));
+
+    // Weekly aggregation
+    const weeklyP = new Map(); const weeklyQ = new Map();
+    for (const [d, ps] of dailyP) {
+      const dt   = new Date(d + 'T00:00:00');
+      const week = getWeekLabel(dt);
+      if (!weeklyP.has(week)) weeklyP.set(week, new Set());
+      ps.forEach(id => weeklyP.get(week).add(id));
+      weeklyQ.set(week, (weeklyQ.get(week) || 0) + (dailyQ.get(d) || 0));
+    }
+    const weeks = [...weeklyP.keys()].sort();
+
+    return {
+      kpis: {
+        totalPods, totalQty, activeStores: storeP.size,
+        active3PL: tplP.size, activeUsers: userP.size,
+        uniqueItems: itemFreq.size, stNumbers: new Set(rows.map(r => r[5])).size,
+        avgQty, revRate, unreviewedCount: revNone,
+      },
+      snapshot: {
+        date: latestDate,
+        pods: latestPodSet.size,
+        qty: dailyQ.get(latestDate) || 0,
+        stores: new Set([...pods.values()].filter(p => p.date === latestDate).map(p => p.store)).size,
+        users: latestUsers.size,
+      },
+      daily:  { dates, pods: dates.map(d => dailyP.get(d).size), qty: dates.map(d => dailyQ.get(d) || 0) },
+      weekly: { dates: weeks, pods: weeks.map(w => weeklyP.get(w).size), qty: weeks.map(w => weeklyQ.get(w) || 0) },
+      topStoresByPods: top(storeP, v => v.size),
+      topStoresByQty:  top(storeQ, v => v),
+      topItemsByFreq:  top(itemFreq, v => v),
+      topItemsByQty:   top(itemQ,   v => v),
+      tplByPods: top(tplP, v => v.size, 6),
+      tplByQty:  top(tplQ, v => v, 6),
+      topUsers:  top(userP, v => v.size, 8),
+      reviewStatus: [
+        { label: 'Warehouse QC', value: revWH },
+        { label: '3PL Verified', value: revTPL },
+        { label: 'Not Reviewed', value: revNone },
+      ],
+      podList: [...pods.entries()].map(([id, v]) => ({ id, ...v })),
+    };
+  },
+
+  buildFilterOptions(rows) {
+    const stores = new Set(), tpls = new Set(), users = new Set(), stnums = new Set();
+    for (const r of rows) {
+      if (r[3]) stores.add(r[3]);
+      if (r[4]) tpls.add(r[4]);
+      if (r[2]) users.add(r[2]);
+      if (r[5]) stnums.add(r[5]);
+    }
+    return { stores: [...stores].sort(), tpls: [...tpls].sort(), users: [...users].sort(), stnums: [...stnums].sort() };
+  }
+};
+
+function getWeekLabel(dt) {
+  const d = new Date(dt);
+  d.setDate(d.getDate() - d.getDay() + 1); // Monday
+  return d.toISOString().slice(0, 10);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CHART MANAGER
+   ═══════════════════════════════════════════════════════════════ */
+const ChartManager = {
+
+  destroy(id) {
+    if (AppState.charts[id]) {
+      AppState.charts[id].destroy();
+      delete AppState.charts[id];
+    }
+  },
+
+  create(id, config) {
+    this.destroy(id);
+    const ctx = document.getElementById(id);
+    if (!ctx) return null;
+    const chart = new Chart(ctx, config);
+    AppState.charts[id] = chart;
+    return chart;
+  },
+
+  /* Horizontal bar chart */
+  hBar(id, labels, values, color, onClick, opts = {}) {
+    const n       = labels.length;
+    const baseH   = opts.baseH || 26;
+    const chartH  = Math.max(200, n * (baseH + 6));
+    const wrap    = document.getElementById(id)?.parentElement;
+    if (wrap) wrap.style.height = chartH + 'px';
+
+    const colors = Array.isArray(color)
+      ? color
+      : Array(n).fill(color || PALETTE.blue);
+
+    this.create(id, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{ data: values, backgroundColor: colors, borderRadius: 4, borderSkipped: false }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true, maintainAspectRatio: false,
+        animation: { duration: 500, easing: 'easeOutQuart' },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1E293B', titleColor: '#fff', bodyColor: '#94A3B8',
+            padding: 10, cornerRadius: 8,
+            callbacks: {
+              label: ctx => ' ' + fmtNum(ctx.parsed.x) + (opts.unit ? ' ' + opts.unit : '')
+            }
+          },
+        },
+        scales: {
+          x: {
+            grid: { color: '#F1F5F9' },
+            ticks: { font: { size: 11 }, callback: v => fmtShort(v) }
+          },
+          y: {
+            grid: { display: false },
+            ticks: { font: { size: 11 }, callback: v => truncate(v, 22) }
+          }
+        },
+        onClick: onClick ? (e, els) => {
+          if (els.length) onClick(labels[els[0].index], els[0].index);
+        } : undefined,
+      }
+    });
+  },
+
+  /* Dual-axis line chart */
+  dualLine(id, labels, ds1, ds2, onClick) {
+    const hidden = { pods: false, qty: false };
+    const chart = this.create(id, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'PODs', data: ds1, yAxisID: 'y',
+            borderColor: PALETTE.blue, backgroundColor: hexAlpha(PALETTE.blue, .12),
+            borderWidth: 2.5, pointRadius: 4, pointHoverRadius: 7,
+            pointBackgroundColor: PALETTE.blue, pointBorderColor: '#fff', pointBorderWidth: 2,
+            fill: true, tension: .35,
+          },
+          {
+            label: 'Quantity', data: ds2, yAxisID: 'y1',
+            borderColor: PALETTE.orange, backgroundColor: hexAlpha(PALETTE.orange, .08),
+            borderWidth: 2.5, pointRadius: 4, pointHoverRadius: 7,
+            pointBackgroundColor: PALETTE.orange, pointBorderColor: '#fff', pointBorderWidth: 2,
+            fill: true, tension: .35,
+          },
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        animation: { duration: 600, easing: 'easeOutQuart' },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1E293B', titleColor: '#fff', bodyColor: '#CBD5E1',
+            padding: 12, cornerRadius: 10,
+            callbacks: { label: ctx => ' ' + ctx.dataset.label + ': ' + fmtNum(ctx.parsed.y) }
+          },
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { font: { size: 11 }, maxTicksLimit: 10 }
+          },
+          y: {
+            position: 'left',
+            title: { display: true, text: 'PODs', font: { size: 11 }, color: PALETTE.blue },
+            grid: { color: '#F1F5F9' },
+            ticks: { font: { size: 11 }, callback: v => fmtShort(v) }
+          },
+          y1: {
+            position: 'right',
+            title: { display: true, text: 'Quantity', font: { size: 11 }, color: PALETTE.orange },
+            grid: { drawOnChartArea: false },
+            ticks: { font: { size: 11 }, callback: v => fmtShort(v) }
+          }
+        },
+        onClick: onClick ? (e, els) => {
+          if (els.length) onClick(labels[els[0].index]);
+        } : undefined,
+      }
+    });
+
+    // Custom legend with toggle
+    const leg = document.getElementById('trendLegend');
+    if (leg) {
+      leg.innerHTML = ['pods', 'qty'].map((k, i) => `
+        <div class="legend-item" id="leg-${k}" onclick="toggleTrendLine(${i},'${k}')">
+          <div class="legend-dot" style="background:${i===0?PALETTE.blue:PALETTE.orange}"></div>
+          <span>${i===0?'PODs (Invoices)':'Quantity (Remaining Qty)'}</span>
+        </div>`).join('');
+    }
+  },
+
+  /* Donut chart */
+  donut(id, labels, values, colors, onClick) {
+    const total = values.reduce((s, v) => s + v, 0);
+    this.create(id, {
+      type: 'doughnut',
+      data: {
+        labels,
+        datasets: [{ data: values, backgroundColor: colors, borderWidth: 3, borderColor: '#fff', hoverBorderWidth: 3 }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        cutout: '65%',
+        animation: { animateRotate: true, duration: 600, easing: 'easeOutQuart' },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1E293B', titleColor: '#fff', bodyColor: '#CBD5E1',
+            padding: 10, cornerRadius: 8,
+            callbacks: {
+              label: ctx => {
+                const pct = total ? Math.round(ctx.parsed / total * 100) : 0;
+                return ' ' + fmtNum(ctx.parsed) + ' (' + pct + '%)';
+              }
+            }
+          },
+        },
+        onClick: onClick ? (e, els) => {
+          if (els.length) onClick(labels[els[0].index]);
+        } : undefined,
+      }
+    });
+  },
+
+  /* Vertical bar for users */
+  vBar(id, labels, values, colors, onClick) {
+    this.create(id, {
+      type: 'bar',
+      data: {
+        labels: labels.map(l => truncate(l, 12)),
+        datasets: [{ data: values, backgroundColor: colors, borderRadius: 6, borderSkipped: false }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        animation: { duration: 500, easing: 'easeOutQuart' },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1E293B', titleColor: '#fff', bodyColor: '#CBD5E1',
+            padding: 10, cornerRadius: 8,
+            callbacks: { label: ctx => ' ' + fmtNum(ctx.parsed.y) + ' PODs' }
+          },
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 11 } } },
+          y: { grid: { color: '#F1F5F9' }, ticks: { font: { size: 11 }, callback: v => fmtShort(v) } }
+        },
+        onClick: onClick ? (e, els) => {
+          if (els.length) onClick(labels[els[0].index], els[0].index);
+        } : undefined,
+      }
+    });
+  },
+
+  highlightBar(id, activeIdx) {
+    const chart = AppState.charts[id];
+    if (!chart) return;
+    const ds = chart.data.datasets[0];
+    const baseColor = typeof ds.backgroundColor === 'string'
+      ? ds.backgroundColor : (Array.isArray(ds.backgroundColor) ? ds.backgroundColor[0] : PALETTE.blue);
+    ds.backgroundColor = chart.data.labels.map((_, i) =>
+      activeIdx === null || i === activeIdx ? baseColor : hexAlpha(baseColor, .3));
+    chart.update('none');
+  }
+};
+
+/* ═══════════════════════════════════════════════════════════════
+   RENDER FUNCTIONS
+   ═══════════════════════════════════════════════════════════════ */
+
+function renderKPIs(kpis) {
+  const tiles = [
+    { label:'Total PODs',       value: fmtNum(kpis.totalPods),    sub:'Unique shipments',       icon:'📦', iconBg:'#FFF7ED', alert:false },
+    { label:'Total Quantity',   value: fmtNum(kpis.totalQty),     sub:'Remaining units',         icon:'📊', iconBg:'#EFF6FF', alert:false },
+    { label:'Active Stores',    value: kpis.activeStores,         sub:'Branches covered',        icon:'🏪', iconBg:'#F0FDF4', alert:false },
+    { label:'Active 3PL',       value: kpis.active3PL,            sub:'Logistics partners',      icon:'🚚', iconBg:'#FDF4FF', alert:false },
+    { label:'Active Users',     value: kpis.activeUsers,          sub:'Team members',            icon:'👥', iconBg:'#EFF6FF', alert:false },
+    { label:'Unique Items',     value: fmtNum(kpis.uniqueItems),  sub:'Distinct SKUs',           icon:'📋', iconBg:'#F0FDF4', alert:false },
+    { label:'Review Rate',      value: kpis.revRate + '%',        sub: fmtNum(kpis.unreviewedCount) + ' items pending', icon:'✅', iconBg:'#FEF2F2', alert:true },
+    { label:'Avg Qty / POD',    value: kpis.avgQty,               sub:'Average units per shipment', icon:'⚖️', iconBg:'#FFFBEB', alert:false },
+  ];
+  document.getElementById('kpiGrid').innerHTML = tiles.map(t => `
+    <div class="kpi-card${t.alert ? ' kpi-alert' : ''}" onclick="onKPIClick('${t.label}')">
+      <div class="kpi-card-top">
+        <div class="kpi-label">${t.label}</div>
+        <div class="kpi-icon-wrap" style="background:${t.iconBg}">${t.icon}</div>
+      </div>
+      <div class="kpi-value">${t.value}</div>
+      <div class="kpi-sub">${t.sub}</div>
+    </div>`).join('');
+}
+
+function renderSnapshot(snap) {
+  const el = document.getElementById('snapshotDate');
+  if (el) el.textContent = snap.date || 'N/A';
+  document.getElementById('snapshotGrid').innerHTML = [
+    { label:'PODs Today',   value: snap.pods,   sub:'Shipments processed', icon:'📦' },
+    { label:'Qty Today',    value: fmtNum(snap.qty), sub:'Units moved',    icon:'📊' },
+    { label:'Active Stores',value: snap.stores, sub:'Branches active',     icon:'🏪' },
+    { label:'Active Users', value: snap.users,  sub:'Team on shift',       icon:'👤' },
+  ].map(t => `
+    <div class="snap-card">
+      <div class="snap-label">${t.icon} ${t.label}</div>
+      <div class="snap-value">${t.value}</div>
+      <div class="snap-sub">${t.sub}</div>
+    </div>`).join('');
+}
+
+function renderTrend(agg) {
+  const src = AppState.trendMode === 'weekly' ? agg.weekly : agg.daily;
+  ChartManager.dualLine('trendChart', src.dates, src.pods, src.qty, (dateLabel) => {
+    // Click a date point → filter by date
+    AppState.filters.dateFrom = dateLabel;
+    AppState.filters.dateTo   = dateLabel;
+    updateFilterUI();
+    render();
+  });
+}
+
+function renderStores(agg) {
+  const p = agg.topStoresByPods, q = agg.topStoresByQty;
+  document.getElementById('tagStorePods').textContent = p.length + ' stores';
+
+  ChartManager.hBar('storePodsChart', p.map(r => r.label), p.map(r => r.value),
+    p.map((_, i) => PALETTE.series[i % PALETTE.series.length]),
+    (store) => quickFilter('stores', store, 'storePodsChart'), { unit: 'PODs' }
+  );
+  ChartManager.hBar('storeQtyChart', q.map(r => r.label), q.map(r => r.value),
+    q.map((_, i) => hexAlpha(PALETTE.teal, .7 + .03 * i)),
+    (store) => quickFilter('stores', store, 'storeQtyChart'), { unit: 'units' }
+  );
+}
+
+function renderItems(agg) {
+  const f = agg.topItemsByFreq, q = agg.topItemsByQty;
+  ChartManager.hBar('itemsFreqChart', f.map(r => r.label), f.map(r => r.value),
+    PALETTE.purple, null, { unit: 'occurrences' });
+  ChartManager.hBar('itemsQtyChart', q.map(r => r.label), q.map(r => r.value),
+    PALETTE.green, null, { unit: 'units' });
+}
+
+function renderLogistics(agg) {
+  const tplColors = (labels) => labels.map(l => PALETTE.tpl[l] || PALETTE.series[0]);
+
+  // 3PL by PODs
+  const tp = agg.tplByPods;
+  ChartManager.donut('tplPodsChart', tp.map(r => r.label), tp.map(r => r.value),
+    tplColors(tp.map(r => r.label)), (tpl) => quickFilter('tpls', tpl, null));
+  renderDonutLegend('legendTplPods', tp, tplColors(tp.map(r => r.label)));
+
+  // 3PL by Qty
+  const tq = agg.tplByQty;
+  ChartManager.donut('tplQtyChart', tq.map(r => r.label), tq.map(r => r.value),
+    tplColors(tq.map(r => r.label)), (tpl) => quickFilter('tpls', tpl, null));
+  renderDonutLegend('legendTplQty', tq, tplColors(tq.map(r => r.label)));
+
+  // Review status
+  const rv = agg.reviewStatus;
+  const rvColors = [PALETTE.green, PALETTE.blue, '#EF4444'];
+  ChartManager.donut('reviewChart', rv.map(r => r.label), rv.map(r => r.value), rvColors, null);
+  renderDonutLegend('legendReview', rv, rvColors);
+}
+
+function renderDonutLegend(containerId, data, colors) {
+  const total = data.reduce((s, d) => s + d.value, 0);
+  document.getElementById(containerId).innerHTML = data.map((d, i) => `
+    <div class="dl-row">
+      <div class="dl-label"><div class="dl-dot" style="background:${colors[i]}"></div><span>${d.label}</span></div>
+      <div class="dl-pct">${total ? Math.round(d.value/total*100) : 0}%</div>
+    </div>`).join('');
+}
+
+function renderTeam(agg) {
+  const users = agg.topUsers;
+  const max   = users[0]?.value || 1;
+  ChartManager.vBar('usersChart',
+    users.map(r => r.label), users.map(r => r.value),
+    users.map((_, i) => PALETTE.series[i % PALETTE.series.length]),
+    (user) => quickFilter('users', user, null)
+  );
+  document.getElementById('userDetailGrid').innerHTML = users.map((u, i) => `
+    <div class="user-row">
+      <div class="user-avatar">${u.label.substring(0,2).toUpperCase()}</div>
+      <div class="user-info">
+        <div class="user-name">${u.label}</div>
+        <div class="user-pods">${fmtNum(u.value)} PODs submitted</div>
+      </div>
+      <div class="user-bar-wrap">
+        <div class="user-bar" style="width:${Math.round(u.value/max*100)}%;background:${PALETTE.series[i%PALETTE.series.length]}"></div>
+      </div>
+    </div>`).join('');
+}
+
+function renderActivity(podList) {
+  // Apply search
+  let rows = podList;
+  const q  = AppState.actSearch.toLowerCase();
+  if (q) {
+    rows = rows.filter(p =>
+      p.id.toLowerCase().includes(q) ||
+      p.store.toLowerCase().includes(q) ||
+      p.stNumber.toLowerCase().includes(q) ||
+      p.tpl.toLowerCase().includes(q) ||
+      p.user.toLowerCase().includes(q)
+    );
+  }
+
+  // Sort
+  const { key, dir } = AppState.actSort;
+  rows = [...rows].sort((a, b) => {
+    let av = a[key], bv = b[key];
+    if (key === 'qty' || key === 'items') { av = +av; bv = +bv; }
+    if (av < bv) return -dir; if (av > bv) return dir; return 0;
+  });
+
+  AppState.actRows = rows;
+  const total = rows.length;
+  const pages = Math.max(1, Math.ceil(total / AppState.actPageSize));
+  AppState.actPage = Math.min(AppState.actPage, pages);
+  const start = (AppState.actPage - 1) * AppState.actPageSize;
+  const slice = rows.slice(start, start + AppState.actPageSize);
+
+  const body  = document.getElementById('actBody');
+  const empty = document.getElementById('actEmpty');
+
+  if (!slice.length) {
+    body.innerHTML = '';
+    empty.style.display = 'flex';
+  } else {
+    empty.style.display = 'none';
+    body.innerHTML = slice.map(p => {
+      const tplClass = 'tpl-' + (p.tpl.split(' ')[0]) || 'default';
+      const reviewed = p.reviewedBy && p.reviewedBy !== '';
+      return `
+        <tr onclick="openDrawer('${escHtml(p.id)}')">
+          <td>${escHtml(p.id)}</td>
+          <td>${p.date}</td>
+          <td>${escHtml(p.store)}</td>
+          <td><code style="font-size:11px">${escHtml(p.stNumber)}</code></td>
+          <td><span class="tpl-badge ${tplClass}">${escHtml(p.tpl)}</span></td>
+          <td><strong>${fmtNum(p.qty)}</strong></td>
+          <td>${p.items.length}</td>
+          <td>${escHtml(p.user)}</td>
+          <td>
+            <span class="review-badge ${reviewed ? 'review-yes' : 'review-no'}">
+              ${reviewed ? '✓ ' + escHtml(p.reviewedBy) : '⏳ Pending'}
+            </span>
+          </td>
+        </tr>`;
+    }).join('');
+  }
+
+  document.getElementById('actCount').textContent =
+    total + ' POD' + (total !== 1 ? 's' : '') +
+    (q ? ' (filtered)' : '');
+
+  renderPagination(pages);
+}
+
+function renderPagination(pages) {
+  const pg = document.getElementById('actPagination');
+  if (!pg) return;
+  const cur = AppState.actPage;
+  let html = `<button class="pg-btn" onclick="goPage(${cur-1})" ${cur<=1?'disabled':''}>‹</button>`;
+  const window = 2;
+  for (let i = 1; i <= pages; i++) {
+    if (i === 1 || i === pages || Math.abs(i - cur) <= window) {
+      html += `<button class="pg-btn${i===cur?' active':''}" onclick="goPage(${i})">${i}</button>`;
+    } else if (Math.abs(i - cur) === window + 1) {
+      html += `<span style="color:#CBD5E1;padding:0 4px">…</span>`;
+    }
+  }
+  html += `<button class="pg-btn" onclick="goPage(${cur+1})" ${cur>=pages?'disabled':''}>›</button>`;
+  pg.innerHTML = html;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MAIN RENDER ORCHESTRATOR
+   ═══════════════════════════════════════════════════════════════ */
+function render() {
+  const filtered = AppState.getFiltered();
+  const agg      = DataEngine.aggregate(filtered);
+
+  renderKPIs(agg.kpis);
+  renderSnapshot(agg.snapshot);
+  renderTrend(agg);
+  renderStores(agg);
+  renderItems(agg);
+  renderLogistics(agg);
+  renderTeam(agg);
+  renderActivity(agg.podList);
+
+  // Show/hide reset button
+  document.getElementById('resetBtn').style.display =
+    AppState.hasActiveFilters() ? 'flex' : 'none';
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   FILTER MANAGEMENT
+   ═══════════════════════════════════════════════════════════════ */
+
+function initFilterOptions(opts) {
+  AppState.filterOptions = opts;
+  buildOptList('store', opts.stores, AppState.filters.stores);
+  buildOptList('tpl',   opts.tpls,   AppState.filters.tpls);
+  buildOptList('user',  opts.users,   AppState.filters.users);
+  buildOptList('stnum', opts.stnums,  AppState.filters.stnums);
+}
+
+function buildOptList(key, items, selectedSet, filterStr = '') {
+  const container = document.getElementById('fo-' + key);
+  if (!container) return;
+  const filtered = filterStr
+    ? items.filter(i => i.toLowerCase().includes(filterStr.toLowerCase()))
+    : items;
+  container.innerHTML = filtered.map(item => `
+    <label class="opt-item${selectedSet.has(item) ? ' checked' : ''}" onclick="toggleOption('${key}','${escAttr(item)}',this)">
+      <input type="checkbox" ${selectedSet.has(item) ? 'checked' : ''} onclick="event.stopPropagation()">
+      <span>${escHtml(item)}</span>
+    </label>`).join('');
+}
+
+function toggleOption(key, value, el) {
+  const setMap = { store:'stores', tpl:'tpls', user:'users', stnum:'stnums' };
+  const set = AppState.filters[setMap[key]];
+  if (set.has(value)) {
+    set.delete(value);
+    el.classList.remove('checked');
+    el.querySelector('input').checked = false;
+  } else {
+    set.add(value);
+    el.classList.add('checked');
+    el.querySelector('input').checked = true;
+  }
+  updateFilterLabel(key, set);
+  updateFilterCount(key, set);
+  AppState.actPage = 1;
+  render();
+}
+
+function updateFilterLabel(key, set) {
+  const labels = { store:'All Stores', tpl:'All 3PL', user:'All Users', stnum:'All ST#' };
+  const el = document.getElementById('flbl-' + key);
+  if (!el) return;
+  if (set.size === 0) el.textContent = labels[key];
+  else if (set.size === 1) el.textContent = [...set][0].split(' ').slice(0,2).join(' ');
+  else el.textContent = labels[key].replace('All ', '') + ' (' + set.size + ')';
+}
+
+function updateFilterCount(key, set) {
+  const fc = document.getElementById('fc-' + key);
+  const fb = document.getElementById('fb-' + key);
+  if (!fc || !fb) return;
+  if (set.size > 0) {
+    fc.textContent = set.size;
+    fc.style.display = '';
+    fb.classList.add('active');
+  } else {
+    fc.style.display = 'none';
+    fb.classList.remove('active');
+  }
+}
+
+function updateFilterUI() {
+  const f = AppState.filters;
+  // Date
+  const lblDate = document.getElementById('flbl-date');
+  if (lblDate) {
+    if (!f.dateFrom && !f.dateTo) lblDate.textContent = 'All Dates';
+    else if (f.dateFrom === f.dateTo) lblDate.textContent = f.dateFrom;
+    else lblDate.textContent = (f.dateFrom || '…') + ' → ' + (f.dateTo || '…');
+  }
+  document.getElementById('resetBtn').style.display =
+    AppState.hasActiveFilters() ? 'flex' : 'none';
+}
+
+function toggleFilter(key, e) {
+  if (e) e.stopPropagation();
+  const fg = document.getElementById('fg-' + key);
+  const isOpen = fg.classList.contains('open');
+  closeAllFilters();
+  if (!isOpen) {
+    fg.classList.add('open');
+    document.getElementById('filterBackdrop').style.display = 'block';
+  }
+}
+
+function closeAllFilters() {
+  document.querySelectorAll('.fg.open').forEach(el => el.classList.remove('open'));
+  document.getElementById('filterBackdrop').style.display = 'none';
+}
+
+function selectAll(key) {
+  const setMap = { store:'stores', tpl:'tpls', user:'users', stnum:'stnums' };
+  const opts   = AppState.filterOptions;
+  const optsMap = { store: opts.stores, tpl: opts.tpls, user: opts.users, stnum: opts.stnums };
+  const set    = AppState.filters[setMap[key]];
+  optsMap[key].forEach(v => set.add(v));
+  buildOptList(key, optsMap[key], set);
+  updateFilterLabel(key, set);
+  updateFilterCount(key, set);
+  AppState.actPage = 1;
+  render();
+}
+
+function clearFilter(key) {
+  const setMap = { store:'stores', tpl:'tpls', user:'users', stnum:'stnums' };
+  const set = AppState.filters[setMap[key]];
+  set.clear();
+  const opts = AppState.filterOptions;
+  const optsMap = { store: opts.stores, tpl: opts.tpls, user: opts.users, stnum: opts.stnums };
+  buildOptList(key, optsMap[key], set);
+  updateFilterLabel(key, set);
+  updateFilterCount(key, set);
+  AppState.actPage = 1;
+  render();
+}
+
+function searchOptions(key, q) {
+  const opts   = AppState.filterOptions;
+  const optsMap = { store: opts.stores, tpl: opts.tpls, user: opts.users, stnum: opts.stnums };
+  const setMap  = { store:'stores', tpl:'tpls', user:'users', stnum:'stnums' };
+  buildOptList(key, optsMap[key], AppState.filters[setMap[key]], q);
+}
+
+function setDatePreset(days) {
+  const f = AppState.filters;
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+  const btn = days === 0 ? 'pr-all' : days === 1 ? 'pr-1' : days === 7 ? 'pr-7' : 'pr-30';
+  const pbtn = document.getElementById(btn);
+  if (pbtn) pbtn.classList.add('active');
+
+  if (days === 0) {
+    f.dateFrom = null; f.dateTo = null;
+    document.getElementById('dateFrom').value = '';
+    document.getElementById('dateTo').value   = '';
+  } else {
+    const today = new Date();
+    const from  = new Date(today);
+    from.setDate(today.getDate() - (days - 1));
+    f.dateFrom = from.toISOString().slice(0, 10);
+    f.dateTo   = today.toISOString().slice(0, 10);
+    document.getElementById('dateFrom').value = f.dateFrom;
+    document.getElementById('dateTo').value   = f.dateTo;
+  }
+  updateFilterUI();
+  AppState.actPage = 1;
+  render();
+}
+
+function applyDateFilter() {
+  const from = document.getElementById('dateFrom').value;
+  const to   = document.getElementById('dateTo').value;
+  AppState.filters.dateFrom = from || null;
+  AppState.filters.dateTo   = to   || null;
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+  updateFilterUI();
+  AppState.actPage = 1;
+  render();
+}
+
+function resetAllFilters() {
+  const f = AppState.filters;
+  f.dateFrom = null; f.dateTo = null;
+  f.stores.clear(); f.tpls.clear(); f.users.clear(); f.stnums.clear();
+  document.getElementById('dateFrom').value = '';
+  document.getElementById('dateTo').value   = '';
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('pr-all')?.classList.add('active');
+  ['store','tpl','user','stnum'].forEach(k => {
+    updateFilterLabel(k, new Set());
+    updateFilterCount(k, new Set());
+  });
+  const opts = AppState.filterOptions;
+  buildOptList('store', opts.stores, new Set());
+  buildOptList('tpl',   opts.tpls,   new Set());
+  buildOptList('user',  opts.users,   new Set());
+  buildOptList('stnum', opts.stnums,  new Set());
+  document.getElementById('flbl-date').textContent = 'All Dates';
+  document.getElementById('resetBtn').style.display = 'none';
+  AppState.actPage = 1;
+  render();
+}
+
+function quickFilter(filterKey, value, chartId) {
+  // Toggle single value in a filter set
+  const set = AppState.filters[filterKey];
+  const wasActive = set.has(value) && set.size === 1;
+  set.clear();
+  if (!wasActive) set.add(value);
+  const uiKey = filterKey === 'stores' ? 'store' : filterKey === 'tpls' ? 'tpl' : filterKey === 'users' ? 'user' : 'stnum';
+  const opts = AppState.filterOptions;
+  const optsMap = { store: opts.stores, tpl: opts.tpls, user: opts.users, stnum: opts.stnums };
+  buildOptList(uiKey, optsMap[uiKey] || [], set);
+  updateFilterLabel(uiKey, set);
+  updateFilterCount(uiKey, set);
+  AppState.actPage = 1;
+  render();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   NAVIGATION & UI HELPERS
+   ═══════════════════════════════════════════════════════════════ */
+
+function navTo(section, el) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  el.classList.add('active');
+  const target = document.getElementById('sec-' + section);
+  if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const titles = { kpis:'Overview', trend:'Daily Trend', stores:'Stores', items:'Items', logistics:'Logistics', team:'Team', activity:'Activity' };
+  document.getElementById('topbarTitle').textContent = titles[section] || 'Overview';
+}
+
+function toggleSidebar() {
+  document.getElementById('app').classList.toggle('collapsed');
+}
+
+function setTrendMode(mode, btn) {
+  AppState.trendMode = mode;
+  document.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const filtered = AppState.getFiltered();
+  const agg      = DataEngine.aggregate(filtered);
+  renderTrend(agg);
+}
+
+function toggleTrendLine(dsIdx, key) {
+  const chart = AppState.charts['trendChart'];
+  if (!chart) return;
+  const ds = chart.data.datasets[dsIdx];
+  ds.hidden = !ds.hidden;
+  chart.update();
+  const leg = document.getElementById('leg-' + key);
+  if (leg) leg.classList.toggle('hidden', ds.hidden);
+}
+
+function filterActivity(q) {
+  AppState.actSearch = q;
+  AppState.actPage   = 1;
+  const filtered = AppState.getFiltered();
+  const agg      = DataEngine.aggregate(filtered);
+  renderActivity(agg.podList);
+}
+
+function sortAct(key) {
+  if (AppState.actSort.key === key) {
+    AppState.actSort.dir = -AppState.actSort.dir;
+  } else {
+    AppState.actSort = { key, dir: -1 };
+  }
+  // Update sort arrows
+  document.querySelectorAll('.sort-arr').forEach(el => el.textContent = '');
+  const arr = document.getElementById('sort-' + key);
+  if (arr) arr.textContent = AppState.actSort.dir === 1 ? ' ↑' : ' ↓';
+
+  const filtered = AppState.getFiltered();
+  const agg      = DataEngine.aggregate(filtered);
+  renderActivity(agg.podList);
+}
+
+function goPage(n) {
+  AppState.actPage = n;
+  const filtered = AppState.getFiltered();
+  const agg      = DataEngine.aggregate(filtered);
+  renderActivity(agg.podList);
+  document.getElementById('sec-activity').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function onKPIClick(label) {
+  if (label === 'Review Rate') {
+    document.getElementById('sec-logistics').scrollIntoView({ behavior: 'smooth' });
+  } else if (label === 'Active Stores') {
+    document.getElementById('sec-stores').scrollIntoView({ behavior: 'smooth' });
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   DRAWER
+   ═══════════════════════════════════════════════════════════════ */
+
+function openDrawer(podId) {
+  // Find POD data from raw rows
+  const rows  = AppState.getFiltered();
+  const items = rows.filter(r => r[0] === podId);
+  if (!items.length) return;
+
+  const r       = items[0];
+  const totalQty = items.reduce((s, i) => s + i[8], 0);
+  const reviewed = r[9];
+
+  document.getElementById('drawerTitle').textContent = podId;
+  document.getElementById('drawerSub').textContent   =
+    r[3] + ' · ' + r[4] + ' · ' + r[1];
+
+  document.getElementById('drawerBody').innerHTML = `
+    <div class="drawer-meta-grid">
+      <div class="drawer-meta-item"><div class="drawer-meta-label">Store</div><div class="drawer-meta-value">${escHtml(r[3])}</div></div>
+      <div class="drawer-meta-item"><div class="drawer-meta-label">3PL</div><div class="drawer-meta-value">${escHtml(r[4])}</div></div>
+      <div class="drawer-meta-item"><div class="drawer-meta-label">ST Number</div><div class="drawer-meta-value" style="font-family:monospace">${escHtml(r[5])}</div></div>
+      <div class="drawer-meta-item"><div class="drawer-meta-label">Ship Date</div><div class="drawer-meta-value">${r[1]}</div></div>
+      <div class="drawer-meta-item"><div class="drawer-meta-label">Submitted By</div><div class="drawer-meta-value">${escHtml(r[2])}</div></div>
+      <div class="drawer-meta-item">
+        <div class="drawer-meta-label">Review Status</div>
+        <div class="drawer-meta-value">
+          <span class="review-badge ${reviewed ? 'review-yes':'review-no'}" style="font-size:12px">
+            ${reviewed ? '✓ ' + escHtml(reviewed) : '⏳ Pending Review'}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <div class="drawer-items-title">Items in this POD (${items.length})</div>
+    <table class="drawer-items-table">
+      <thead><tr><th>#</th><th>Item No.</th><th>Description</th><th style="text-align:right">Qty</th></tr></thead>
+      <tbody>
+        ${items.map((item, i) => `
+          <tr>
+            <td>${i + 1}</td>
+            <td>${escHtml(item[6] || '—')}</td>
+            <td style="max-width:200px;white-space:normal;word-break:break-word">${escHtml(item[7] || '—')}</td>
+            <td style="text-align:right;font-weight:700">${fmtNum(item[8])}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+    <div class="drawer-total-row">
+      <div class="drawer-total-label">Total Remaining Qty</div>
+      <div class="drawer-total-value">${fmtNum(totalQty)}</div>
+    </div>`;
+
+  document.getElementById('drawer').classList.add('open');
+  document.getElementById('drawerOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeDrawer() {
+  document.getElementById('drawer').classList.remove('open');
+  document.getElementById('drawerOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   EXPORT
+   ═══════════════════════════════════════════════════════════════ */
+function exportCSV() {
+  const rows    = AppState.actRows;
+  const headers = ['POD ID','Date','Store','ST Number','3PL','Total Qty','Items','Submitted By'];
+  const lines   = [headers.join(',')].concat(
+    rows.map(p => [p.id, p.date, p.store, p.stNumber, p.tpl, p.qty, p.items.length, p.user]
+      .map(v => '"' + String(v).replace(/"/g, '""') + '"').join(','))
+  );
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = 'wh_qc_export_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   DATA LOADING
+   ═══════════════════════════════════════════════════════════════ */
+function loadData() {
+  document.getElementById('lastRefreshText').textContent = 'Loading…';
+  document.getElementById('skeleton').style.display  = 'block';
+  document.getElementById('dashboard').style.display = 'none';
+
+  google.script.run
+    .withSuccessHandler(onDataLoaded)
+    .withFailureHandler(onDataError)
+    .getSheetData();
+}
+
+function onDataLoaded(result) {
+  if (result.error) { onDataError(result.error); return; }
+
+  AppState.raw = result.rows || [];
+  const opts   = DataEngine.buildFilterOptions(AppState.raw);
+  initFilterOptions(opts);
+
+  document.getElementById('skeleton').style.display  = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+
+  // Set date range from data
+  const dates = AppState.raw.map(r => r[1]).filter(Boolean).sort();
+  if (dates.length) {
+    document.getElementById('dateFrom').min = dates[0];
+    document.getElementById('dateTo').max   = dates[dates.length - 1];
+  }
+
+  render();
+
+  const ts = new Date(result.ts);
+  document.getElementById('lastRefreshText').textContent =
+    'Updated ' + ts.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+  document.querySelector('.refresh-dot')?.classList.add('live');
+}
+
+function onDataError(err) {
+  console.error('Data load error:', err);
+  document.getElementById('lastRefreshText').textContent = 'Load failed — retry';
+  document.getElementById('skeleton').innerHTML =
+    '<div style="padding:48px;text-align:center;color:#94A3B8">' +
+    '<div style="font-size:32px;margin-bottom:12px">⚠️</div>' +
+    '<div style="font-size:14px;font-weight:600;color:#64748B;margin-bottom:8px">Failed to load data</div>' +
+    '<div style="font-size:12px;color:#CBD5E1;margin-bottom:16px">' + String(err) + '</div>' +
+    '<button onclick="loadData()" style="padding:8px 20px;background:#FF6B00;color:#fff;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer">Retry</button>' +
+    '</div>';
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   UTILITIES
+   ═══════════════════════════════════════════════════════════════ */
+function fmtNum(n) {
+  return Number(n).toLocaleString();
+}
+function fmtShort(n) {
+  if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n/1e3).toFixed(1) + 'K';
+  return n;
+}
+function truncate(s, n) {
+  return String(s).length > n ? String(s).slice(0, n) + '…' : String(s);
+}
+function hexAlpha(hex, a) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function escAttr(s) {
+  return String(s).replace(/'/g,"\\'").replace(/"/g,'&quot;');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   INIT
+   ═══════════════════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', function() {
+  // Keyboard shortcuts
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') { closeDrawer(); closeAllFilters(); }
+  });
+
+  // Intersection Observer for nav highlighting
+  const sections = ['kpis','snapshot','trend','stores','items','logistics','team','activity'];
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const id = entry.target.id.replace('sec-','');
+        document.querySelectorAll('.nav-item').forEach(n => {
+          n.classList.toggle('active', n.getAttribute('data-section') === id);
+        });
+      }
+    });
+  }, { threshold: 0.3 });
+
+  sections.forEach(id => {
+    const el = document.getElementById('sec-' + id);
+    if (el) observer.observe(el);
+  });
+
+  // Load data
+  if (typeof google !== 'undefined' && google.script) {
+    loadData();
+  } else {
+    // Dev mode: load with sample data
+    onDataLoaded({ rows: [], ts: Date.now() });
+  }
+});
+</script>
