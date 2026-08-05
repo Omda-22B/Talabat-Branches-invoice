@@ -1,16 +1,652 @@
 <!DOCTYPE html>
-<html lang="ar">
+<html>
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <title>talabat. Invoice Lookup</title>
-  <style>
-    html,body{margin:0;padding:0;height:100%;background:#6b0f1a;}
-    iframe{border:0;width:100%;height:100vh;display:block;}
-  </style>
+<base target="_top">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+<style>
+*{
+box-sizing:border-box;
+margin:0;
+padding:0;
+font-family:Arial,sans-serif;
+}
+
+body{
+background:#f5f1e6;
+padding:20px;
+}
+
+.container{
+max-width:1200px;
+margin:auto;
+background:white;
+padding:35px;
+border-radius:12px;
+box-shadow:0 4px 15px rgba(0,0,0,0.1);
+position:relative;
+overflow:hidden;
+}
+
+.watermark{
+position:absolute;
+top:50%;
+left:50%;
+transform:translate(-50%,-50%) rotate(-25deg);
+font-size:80px;
+font-weight:900;
+line-height:1.1;
+text-align:center;
+color:rgba(255,90,0,0.05);
+pointer-events:none;
+z-index:0;
+}
+
+.header,.details-grid,table,.buttons{
+position:relative;
+z-index:2;
+}
+
+.header{
+display:flex;
+justify-content:space-between;
+align-items:flex-start;
+border-bottom:3px solid #ff5a00;
+padding-bottom:25px;
+margin-bottom:25px;
+}
+
+.left-header{
+width:65%;
+}
+
+.right-header{
+width:30%;
+display:flex;
+justify-content:center;
+align-items:center;
+}
+
+.talabat-logo{
+font-size:72px;
+font-weight:900;
+color:#ff5a00;
+}
+
+.company-details{
+margin-top:15px;
+line-height:1.8;
+}
+
+.company-details p:first-child{
+color:#D71920;
+font-weight:700;
+font-size:18px;
+}
+
+#qrCode{
+padding:15px;
+background:#fff7f2;
+border-radius:12px;
+min-height:220px;
+display:flex;
+align-items:center;
+justify-content:center;
+}
+
+.details-grid{
+display:grid;
+grid-template-columns:repeat(4,1fr);
+gap:18px;
+margin-bottom:25px;
+}
+
+.field{
+display:flex;
+flex-direction:column;
+gap:8px;
+}
+
+.field label{
+font-weight:bold;
+font-size:14px;
+}
+
+input,select{
+padding:12px;
+border:1px solid #ddd;
+border-radius:8px;
+width:100%;
+}
+
+.readonly{
+background:#fff7f2;
+color:#ff5a00;
+font-weight:bold;
+text-align:center;
+font-size:12px;
+padding:8px;
+word-break:break-word;
+}
+
+/* تمييز الخانة الناقصة باللون الأحمر */
+.invalid{
+border:2px solid #D71920 !important;
+background:#fff5f5;
+}
+
+table{
+width:100%;
+border-collapse:collapse;
+}
+
+th{
+background:#6b0f1a;
+color:white;
+padding:14px;
+}
+
+td{
+padding:8px;
+border-bottom:1px solid #ddd;
+}
+
+.buttons{
+margin-top:25px;
+display:flex;
+gap:15px;
+}
+
+button{
+padding:14px 24px;
+border:none;
+border-radius:8px;
+font-weight:bold;
+cursor:pointer;
+}
+
+.add-btn{
+background:#ff5a00;
+color:white;
+}
+
+.submit-btn{
+background:black;
+color:white;
+}
+
+@media print{
+.buttons{display:none;}
+body{padding:0;background:white;}
+.container{box-shadow:none;}
+}
+
+
+tfoot .totals-row{
+background:#fff7f2;
+border-top:2px solid #ff5a00;
+font-size:14px;
+font-weight:bold;
+}
+
+tfoot td{
+padding:6px 12px;
+text-align:center;
+color:#111;
+}
+
+tfoot strong{
+color:#ff5a00;
+font-size:16px;
+margin-left:6px;
+}
+
+</style>
 </head>
+
 <body>
-  <iframe src="https://script.google.com/macros/s/AKfycbzeiGLPmtcBKVQnty2i9PChFCAOXjMcPo9RrxGJPHRSCkZ9YerglT7WoyrEEjnaKe2g6g/exec"
-          allow="clipboard-write"></iframe>
+
+<div class="container">
+
+<div class="watermark">
+TALABAT<br>VERIFIED
+</div>
+
+<div class="header">
+
+<div class="left-header">
+<div class="talabat-logo">talabat</div>
+
+<div class="company-details">
+<p style="display:flex;align-items:center;gap:8px;">
+  <img
+    alt="Delivery Hero Logo"
+    src="data:image/png;base64,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"
+    style="width:20px;height:20px;">
+  <span>Delivery Hero Dmart Egypt</span>
+</p>
+<p>📍 Suez Road in Cairo</p>
+<p>📞 Telephone : 01040092932</p>
+<p>🧾 Tax Registration : 724-222-847</p>
+</div>
+</div>
+
+<div class="right-header">
+<div id="qrCode"></div>
+</div>
+
+</div>
+
+<div class="details-grid">
+
+<div class="field">
+<label>🆔 POD ID</label>
+<div class="readonly" id="podID">Auto Generated</div>
+</div>
+
+<div class="field">
+<label>👤 Submitted By</label>
+<div class="readonly" id="submittedBy">Auto Detect</div>
+</div>
+
+<div class="field">
+<label>📅 Ship Date</label>
+<div class="readonly" id="shipDate"></div>
+</div>
+
+<div class="field">
+<label>⏰ Ship Time</label>
+<div class="readonly" id="shipTime"></div>
+</div>
+
+<div class="field">
+  <label>📦 ST Number</label>
+  <input
+    type="text"
+    id="st"
+    placeholder="ST076344"
+    maxlength="10">
+</div>
+
+<div class="field">
+<label>🚚 3PL Name</label>
+<select id="driver">
+<option value="">Select 3PL</option>
+<option>Logistaway</option>
+<option>Trella</option>
+<option>NAQLA</option>
+<option>QC Warehouse Review</option>
+</select>
+</div>
+
+<div class="field">
+<label>🏪 Ship to Store</label>
+<select id="store">
+<option value="">Select Store</option>
+
+<option>New Maadi - Laselky-DS 1</option>
+<option>Dokki-DS 2</option>
+<option>Rehab-DS 3</option>
+<option>Zahraa el Maadi-DS 4</option>
+<option>Lebanon Square-DS 5</option>
+<option>Mokattam-DS 6</option>
+<option>Agouza-DS 7</option>
+<option>Nasr City-DS 8</option>
+<option>Maadi Corniche-DS 9</option>
+<option>Hegaz-DS 10</option>
+<option>Haram Tersa-DS 11</option>
+<option>Icon Mall-DS 12</option>
+<option>Manial-DS 13</option>
+<option>Helwan-DS 14</option>
+<option>Sayeda Zeinab-DS 15</option>
+<option>El Daher-DS 16</option>
+<option>City Stars-DS 17</option>
+<option>Hadayek el Ahram-DS 18</option>
+<option>First Mall-DS 19</option>
+<option>Fount Mall-DS 20</option>
+<option>Kasr El Kobba-DS 21</option>
+<option>Zayed-DS 22</option>
+<option>Madinty-DS 23</option>
+<option>Tanta-DS 24</option>
+<option>Mansoura-DS 25</option>
+<option>Alex (Sidi bishr)-DS 26</option>
+<option>Alex (Ibrahimya)-DS 27</option>
+<option>Shoubra-DS 28</option>
+<option>Shrouk-DS 29</option>
+<option>Obour-DS 30</option>
+<option>Ain-shams-DS 31</option>
+<option>Port said-DS 32</option>
+<option>Zakazik-DS 33</option>
+<option>Ismailia-DS 34</option>
+<option>Assuit-DS 35</option>
+<option>Palm Hills-DS 36</option>
+<option>Tagmoa Awal-DS 37</option>
+<option>Hurgada-DS 38</option>
+<option>Madinaty Craft DS 39</option>
+<option>Nasrcity 10th DS 40</option>
+<option>Alex (Wingat) DS 41</option>
+<option>faisal_DS_42</option>
+<option>Tagamoa5 Mahkama DS 43</option>
+<option>Hadayek October DS 44</option>
+<option>Tagamoa Golden DS 45</option>
+<option>Mokatam hadaba DS 46</option>
+<option>October industrial DS 47</option>
+<option>Mansoura gomhoreya-DS 48</option>
+<option>Zahraa Maadi 2 DS 49</option>
+<option>Rehab chillout-DS 50</option>
+<option>Shrouk Mgawra (2) DS 51</option>
+<option>Sheraton DS 52</option>
+<option>Sheikh zayed (2) DS 53</option>
+<option>Faisal Maryoteya (2)_DS_54</option>
+<option>Tagamoa El Banafseg-DS 55</option>
+<option>Rock Vera Mall_DS_56</option>
+<option>Obour Industrial Area_DS_57</option>
+<option>October Festival City_DS_58</option>
+<option>Nasr City (3) DS 59</option>
+<option>Alexandria Smouha DS 60</option>
+<option>New Damietta DS 61</option>
+<option>Alexandria Moharam Bek_DS_62</option>
+<option>Nasr City (4) DS 63</option>
+<option>Tagamoa 5 Spot Mall DS 64</option>
+<option>Suez_DS_65</option>
+<option>Palm Hills (2)-DS 66</option>
+<option>Alexandria_Agamy_DS_67</option>
+<option>Alex El Montazah DS 68</option>
+<option>Tagamoa 1_Toya Mall_DS_69</option>
+<option>Tagamoa 5 El Lotus DS 70</option>
+<option>Mokattam (3)_DS_71</option>
+<option>Nasr City (5) DS 72</option>
+<option>Shrouk (3) DS 73</option>
+<option>10th of Ramadan DS 74</option>
+<option>Sheben El Kom DS 75</option>
+<option>October Beta Gardens DS 76</option>
+
+</select>
+</div>
+
+
+<div class="field">
+<label>🔍 Reviewed By</label>
+<select id="reviewedBy">
+<option value="">Select Review Type</option>
+<option value="Warehouse QC">🏭 Warehouse QC</option>
+<option value="3PL">🚚 3PL</option>
+</select>
+</div>
+
+</div>
+
+<table>
+<thead>
+<tr>
+<th>📦 Item Number</th>
+<th>📝 Description</th>
+<th>🔢 Remaining Qty</th>
+<th>🏷️ Barcode</th>
+<th>💬 Comment</th>
+</tr>
+</thead>
+
+<tbody id="tableBody">
+<tr>
+<td><input type="text" oninput="updateTotals()" onblur="fetchItemDetails(this)"></td>
+<td><input type="text"></td>
+<td><input type="number" oninput="updateTotals()"></td>
+<td><input type="text"></td>
+<td><input type="text"></td>
+</tr>
+</tbody>
+
+<tfoot>
+<tr class="totals-row">
+<td colspan="2">
+<span>Total Items:</span>
+<strong id="totalItems">0</strong>
+</td>
+
+<td colspan="3">
+<span>Total Qty:</span>
+<strong id="totalQty">0</strong>
+</td>
+</tr>
+</tfoot>
+
+</table>
+
+<div class="buttons">
+<button class="add-btn" onclick="addRow()">+ Add Item</button>
+<button class="submit-btn" onclick="submitData()">Submit & Print</button>
+</div>
+
+</div>
+
+<script>
+
+function updateDateTime(){
+const now = new Date();
+document.getElementById("shipDate").innerText = now.toLocaleDateString('en-US');
+document.getElementById("shipTime").innerText = now.toLocaleTimeString('en-US');
+}
+updateDateTime();
+setInterval(updateDateTime,1000);
+
+function addRow(){
+const row=document.createElement("tr");
+
+row.innerHTML=`
+<td><input type="text" oninput="fetchItemDetails(this); updateTotals()"></td>
+<td><input type="text"></td>
+<td><input type="number" oninput="updateTotals()"></td>
+<td><input type="text"></td>
+<td><input type="text"></td>
+`;
+
+document.getElementById("tableBody").appendChild(row);
+}
+
+function fetchItemDetails(input){
+
+const row = input.closest("tr");
+const itemNumber = input.value;
+
+if(itemNumber.length < 3) return;
+
+google.script.run.withSuccessHandler(function(data){
+
+row.cells[1].querySelector("input").value = data.description;
+row.cells[3].querySelector("input").value = data.barcode;
+
+}).getItemDetails(itemNumber);
+}
+
+function updateTotals(){
+
+const rows = document.querySelectorAll("#tableBody tr");
+
+let totalItems = 0;
+let totalQty = 0;
+
+rows.forEach(row=>{
+
+const inputs = row.querySelectorAll("input");
+
+if(inputs[0].value.trim() !== ""){
+totalItems++;
+}
+
+totalQty += parseInt(inputs[2].value) || 0;
+
+});
+
+document.getElementById("totalItems").innerText = totalItems;
+document.getElementById("totalQty").innerText = totalQty;
+}
+
+// ===== التحقق من البيانات المطلوبة =====
+function validateForm(){
+
+const stEl = document.getElementById("st");
+const driverEl = document.getElementById("driver");
+const storeEl = document.getElementById("store");
+const reviewedByEl = document.getElementById("reviewedBy");
+
+// نشيل أي تمييز أحمر قديم
+[stEl, driverEl, storeEl, reviewedByEl].forEach(el => el.classList.remove("invalid"));
+
+let missing = [];
+
+if(stEl.value.replace(/\s+/g,'') === ""){
+missing.push("ST Number");
+stEl.classList.add("invalid");
+}
+
+if(driverEl.value === ""){
+missing.push("3PL Name");
+driverEl.classList.add("invalid");
+}
+
+if(storeEl.value === ""){
+missing.push("Ship to Store");
+storeEl.classList.add("invalid");
+}
+
+if(reviewedByEl.value === ""){
+missing.push("Reviewed By");
+reviewedByEl.classList.add("invalid");
+}
+
+if(missing.length > 0){
+alert("⚠️ لا يمكن طباعة الفاتورة!\n\nمن فضلك أكمل البيانات التالية:\n\n- " + missing.join("\n- "));
+return false;
+}
+
+return true;
+}
+
+function submitData(){
+
+// لو البيانات الأساسية ناقصة يوقف ولا يطبع
+if(!validateForm()) return;
+
+const btn = document.querySelector(".submit-btn");
+
+const rows=document.querySelectorAll("#tableBody tr");
+let finalData=[];
+
+rows.forEach(row=>{
+const inputs=row.querySelectorAll("input");
+
+if(inputs[0].value!==""){
+finalData.push({
+store:document.getElementById("store").value,
+driver:document.getElementById("driver").value,
+st:document.getElementById("st").value,
+itemNumber:inputs[0].value,
+description:inputs[1].value,
+remaining:inputs[2].value,
+barcode:inputs[3].value,
+comment:inputs[4].value,
+reviewedBy:document.getElementById("reviewedBy").value
+});
+}
+});
+
+// لازم صنف واحد على الأقل
+if(finalData.length === 0){
+alert("⚠️ لازم تضيف صنف واحد على الأقل قبل الإرسال");
+return;
+}
+
+btn.innerText = "Submitting...";
+btn.disabled = true;
+
+google.script.run.withSuccessHandler(function(response){
+
+document.getElementById("podID").innerText=response.podID;
+document.getElementById("submittedBy").innerText=response.email;
+
+document.getElementById("qrCode").innerHTML="";
+
+new QRCode(document.getElementById("qrCode"),{
+text: response.pdfUrl,
+width:180,
+height:180
+});
+
+btn.innerText = "Opening Print...";
+
+setTimeout(()=>{
+window.print();
+location.reload();
+},1000);
+
+}).withFailureHandler(function(error){
+
+alert("Error: " + error.message);
+
+btn.innerText = "Submit & Print";
+btn.disabled = false;
+
+}).submitPOD(finalData);
+}
+
+
+// Keyboard Navigation
+document.addEventListener("keydown", function(e){
+
+const active = document.activeElement;
+
+if(active.tagName !== "INPUT") return;
+
+const row = active.closest("tr");
+if(!row) return;
+
+const rows = Array.from(document.querySelectorAll("#tableBody tr"));
+const currentRow = rows.indexOf(row);
+
+const cells = Array.from(row.querySelectorAll("input"));
+const currentCol = cells.indexOf(active);
+
+let target = null;
+
+if(e.key === "Enter" || e.key === "ArrowDown"){
+e.preventDefault();
+
+if(currentRow === rows.length - 1){
+addRow();
+}
+
+const updatedRows = Array.from(document.querySelectorAll("#tableBody tr"));
+
+target = updatedRows[currentRow + 1]
+?.querySelectorAll("input")[currentCol];
+}
+
+if(e.key === "ArrowUp"){
+e.preventDefault();
+
+target = rows[currentRow - 1]
+?.querySelectorAll("input")[currentCol];
+}
+
+if(e.key === "ArrowRight"){
+e.preventDefault();
+target = cells[currentCol + 1];
+}
+
+if(e.key === "ArrowLeft"){
+e.preventDefault();
+target = cells[currentCol - 1];
+}
+
+if(target){
+target.focus();
+target.select?.();
+}
+
+});
+
+</script>
+
 </body>
 </html>
